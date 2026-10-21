@@ -16,6 +16,8 @@
   let currentRole = 'send', currentMode = 'mono', expected = '', status = 'idle', error = '', live = '';
   let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region();
   let lessonLanguage = null, dragStart = null;
+  let testingCamera = false, cameras = [], selectedCameraId = '', cameraCheck = null;
+  let cameraListState = 'cameraListHint', cameraCheckState = 'cameraUnchecked', listGeneration = 0;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
   const screen = PhotonScreen.create($('tx'));
@@ -25,6 +27,9 @@
     busy = value;
     ['role', 'mode', 'rate', 'contrast', 'text-input', 'video-input', 'expected', 'start'].forEach(id => { $(id).disabled = value; });
     $('stop').disabled = !value;
+    $('start').disabled = value && !testingCamera;
+    $('camera-test').disabled = value;
+    $('camera-test-stop').disabled = !testingCamera;
   }
   function paintText(target, value) {
     target.replaceChildren();
@@ -55,6 +60,12 @@
     $('file-fields').hidden = $('role').value !== 'offline';
     $('transmitter').hidden = $('role').value !== 'send';
     $('receiver').hidden = $('role').value === 'send';
+    $('camera-fields').hidden = $('role').value !== 'receive';
+    if ($('role').value === 'receive') $('start').textContent = t('receiveStart');
+    $('camera-list-note').textContent = t(cameraListState, { count: cameras.length });
+    $('camera-check').textContent = t(cameraCheckState);
+    $('camera-details').textContent = cameraCheck ? t('cameraDetails', { name: cameraCheck.label || t('cameraDefault'),
+      width: cameraCheck.width, height: cameraCheck.height, fps: cameraCheck.fps.toFixed(1) }) : '';
     $('status').textContent = t(status);
     $('error').textContent = error ? t(error) : '';
     $('graph-legend').textContent = t(currentMode === 'color' ? 'colorLegend' : 'monoLegend');
@@ -131,6 +142,8 @@
   }
   function stop(reason = 'stopped') {
     generation++;
+    testingCamera = false;
+    cameraCheckState = cameraCheck ? 'cameraChecked' : 'cameraUnchecked';
     camera.stop(); screen.stop();
     if (decoder) decoder.clear();
     decoder = null;
@@ -149,11 +162,13 @@
   function cameraStopped(reason) {
     if (!busy) return;
     if (reason === 'stopped' || reason === 'failed') return;
-    if (['videoEnded', 'timeout'].includes(reason)) decoder?.finish().forEach(received);
+    if (['videoEnded', 'timeout'].includes(reason)) { if (!testingCamera) decoder?.finish().forEach(received); }
     else if (reason !== 'hidden') error = reason;
-    if (busy) stop(reason === 'videoEnded' ? 'complete' : reason === 'hidden' ? 'hidden' : 'stopped');
+    if (busy) stop(reason === 'videoEnded' ? 'complete' : ['hidden', 'timeout'].includes(reason) ? reason : 'stopped');
   }
   async function start() {
+    if (testingCamera) stop();
+    if (busy) return;
     error = '';
     const cfg = settings();
     const role = $('role').value;
@@ -185,8 +200,9 @@
       } else {
         decoder = C.createDecoder(cfg);
         $('video-input').value = '';
-        await camera.start({ file, onStop: cameraStopped, onFrame(frame) {
+        await camera.start({ file, deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
           if (ticket !== generation) return;
+          if (role === 'receive') { cameraCheck = frame.stats; cameraCheckState = 'cameraReceiving'; }
           environment = frame.stats;
           trace.push({ time: frame.time, rgb: frame.rgb });
           if (trace.length > 900) trace.shift();
@@ -196,11 +212,63 @@
             lastDraw = frame.time; drawPreview(); drawGraph(); render();
           }
         } });
+        if (ticket === generation && role === 'receive') rememberCamera();
       }
     } catch (e) {
       if (ticket !== generation) return;
-      error = e.name === 'NotAllowedError' ? 'permission' : e.message;
+      error = PhotonCamera.errorCode(e);
       stop('failed');
+    }
+  }
+  function renderCameraOptions() {
+    const select = $('camera-select');
+    select.replaceChildren();
+    const add = (value, label) => {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+    };
+    add('', t('cameraDefault'));
+    cameras.forEach((device, i) => {
+      if (device.deviceId) add(device.deviceId, device.label || t('cameraUnnamed', { number: i + 1 }));
+    });
+    if (selectedCameraId && !cameras.some(device => device.deviceId === selectedCameraId)) add(selectedCameraId, t('cameraMissing'));
+    select.value = selectedCameraId;
+  }
+  async function refreshCameras() {
+    const ticket = ++listGeneration;
+    cameraListState = 'cameraListLoading'; $('camera-refresh').disabled = true; render();
+    try {
+      const found = await PhotonCamera.listCameras();
+      if (ticket !== listGeneration) return;
+      cameras = found; cameraListState = found.length ? 'cameraListCount' : 'cameraListEmpty';
+    } catch (_) {
+      if (ticket !== listGeneration) return;
+      cameraListState = 'deviceListUnavailable';
+    } finally {
+      if (ticket === listGeneration) { $('camera-refresh').disabled = false; renderCameraOptions(); render(); }
+    }
+  }
+  function rememberCamera() {
+    if (!selectedCameraId && camera.info.deviceId) selectedCameraId = camera.info.deviceId;
+    refreshCameras();
+  }
+  async function testCamera() {
+    if (busy) return;
+    const ticket = ++generation;
+    testingCamera = true; cameraCheck = null; cameraCheckState = 'cameraOpening'; error = '';
+    setBusy(true); status = 'cameraOpening'; render();
+    let paintedAt = -Infinity;
+    try {
+      await camera.start({ deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
+        if (ticket !== generation) return;
+        cameraCheck = frame.stats; cameraCheckState = 'cameraTesting'; status = 'cameraTesting';
+        if (frame.time - paintedAt >= (reduced.matches ? 1 : 0.09)) {
+          paintedAt = frame.time; drawPreview(); render();
+        }
+      } });
+      if (ticket === generation) rememberCamera();
+    } catch (e) {
+      if (ticket !== generation) return;
+      error = PhotonCamera.errorCode(e); stop('failed'); cameraCheckState = 'cameraTestFailed'; render();
     }
   }
   // The marked preview is separate from the unmarked sampling canvas.
@@ -278,7 +346,7 @@
   function updateRegion() {
     selectedRegion = camera.setRegion(Object.fromEntries(['x', 'y', 'w', 'h'].map(key => [key, Number($('roi-' + key).value) / 100])));
     $('region-value').textContent = Object.entries(selectedRegion).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(' · ');
-    if (busy && currentRole !== 'send') {
+    if (busy && currentRole !== 'send' && !testingCamera) {
       decoder?.clear(); decoder = C.createDecoder(settings()); sync = null; live = ''; trace = []; marks = [];
       status = 'receiving'; render();
     }
@@ -290,13 +358,26 @@
   ['role', 'mode', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
     if (!trace.length) currentMode = $('mode').value;
     render(); drawGraph(); drawPreview();
+    if (id === 'role' && $('role').value === 'receive') refreshCameras();
   }));
+  $('camera-refresh').addEventListener('click', refreshCameras);
+  $('camera-test').addEventListener('click', testCamera);
+  $('camera-test-stop').addEventListener('click', () => stop());
+  $('camera-select').addEventListener('change', () => {
+    const choice = $('camera-select').value, wasTesting = testingCamera, resume = busy;
+    if (busy) stop();
+    selectedCameraId = choice; cameraCheck = null; cameraCheckState = 'cameraUnchecked'; error = ''; render();
+    if (resume) { if (wasTesting) testCamera(); else begin('receive', settings()); }
+  });
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    if ($('role').value === 'receive' && !document.hidden) refreshCameras();
+  });
   $('text-input').addEventListener('input', inputInfo);
   $('theme').addEventListener('click', () => {
     theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); render(); drawGraph(); drawPreview();
   });
   $('language').addEventListener('click', () => {
-    language = language === 'ja' ? 'en' : 'ja'; save('language', language); render(); drawPreview();
+    language = language === 'ja' ? 'en' : 'ja'; save('language', language); renderCameraOptions(); render(); drawPreview();
   });
   $('help').addEventListener('click', () => $('help-dialog').showModal());
   $('help-close').addEventListener('click', () => $('help-dialog').close());
@@ -326,5 +407,5 @@
   window.addEventListener('resize', () => { drawGraph(); drawPreview(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && busy) stop('hidden'); });
   window.addEventListener('pagehide', () => stop('stopped'));
-  updateRegion(); render(); drawGraph(); drawPreview();
+  renderCameraOptions(); updateRegion(); render(); drawGraph(); drawPreview();
 }());

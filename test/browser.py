@@ -151,6 +151,138 @@ def interface(p, urls, report):
             browser.close()
 
 
+def camera_ui(p, url, report):
+    for engine in [p.chromium, p.firefox]:
+        options = {'args': ['--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream=device-count=2,fps=30']} if engine.name == 'chromium' else {
+            'firefox_user_prefs': {'media.navigator.streams.fake': True, 'media.navigator.permission.disabled': True}}
+        browser = engine.launch(**options)
+        try:
+            context = browser.new_context(reduced_motion='no-preference')
+            context.add_init_script('''window.cameraTracks = []; window.cameraRequests = [];
+              const openCamera = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+              navigator.mediaDevices.getUserMedia = async constraints => {
+                cameraRequests.push(constraints);
+                const stream = await openCamera(constraints);
+                // Firefox requires explicit opt-in for synthetic events on test media tracks.
+                // Actual hardware events are trusted; this override exists only in this fixture.
+                for (const track of stream.getVideoTracks()) {
+                  const listen = track.addEventListener.bind(track);
+                  track.addEventListener = (name, listener, options) => listen(name, listener, options, true);
+                }
+                cameraTracks.push(...stream.getVideoTracks());
+                if (window.holdCamera) await new Promise(resolve => { window.releaseCamera = resolve; });
+                return stream;
+              };''')
+            page = context.new_page()
+            errors = errors_for(page)
+            page.goto(url + '?lang=en')
+            page.select_option('#role', 'receive')
+            assert page.locator('#camera-fields').is_visible()
+            assert page.evaluate('() => cameraRequests.length') == 0
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.wait_for_function("() => document.querySelector('#camera-select').value.length > 0")
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#crc').inner_text() == '—'
+            assert page.locator('#start').is_enabled()
+            assert page.locator('#camera-test-stop').is_enabled()
+            first = page.locator('#camera-select').input_value()
+            choices = page.locator('#camera-select option').evaluate_all('els => els.map(el => el.value).filter(Boolean)')
+            assert len(choices) >= (2 if engine.name == 'chromium' else 1), choices
+            second = next((value for value in choices if value != first), '')
+            page.select_option('#camera-select', second)
+            page.wait_for_function("() => cameraTracks.length === 2 && cameraTracks[0].readyState === 'ended'")
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            selected = page.locator('#camera-select').input_value()
+            assert page.evaluate('() => cameraTracks[1].getSettings().deviceId') == selected
+            assert page.evaluate('() => cameraRequests.every(request => request.audio === false)')
+            for width in [320, 1280]:
+                page.set_viewport_size({'width': width, 'height': 1000})
+                for theme in ['light', 'dark']:
+                    if page.locator('html').get_attribute('data-theme') != theme:
+                        page.click('#theme')
+                    for language in ['en', 'ja']:
+                        if page.locator('html').get_attribute('lang') != language:
+                            page.click('#language')
+                        layout(page)
+                        if language == 'en':
+                            no_japanese(page)
+                        if engine.name == 'chromium' and theme == 'light':
+                            page.locator('#receiver').screenshot(path=str(OUT / f'camera-test-{width}-{language}.png'))
+            if page.locator('html').get_attribute('lang') != 'en':
+                page.click('#language')
+            # Start reception directly from testing, retaining the chosen camera.
+            page.click('#start')
+            page.wait_for_function("() => cameraTracks.length === 3 && document.querySelector('#camera-check').textContent.includes('Receiving')")
+            assert page.evaluate("() => cameraTracks[1].readyState === 'ended'")
+            assert page.evaluate('() => cameraRequests[2].video.deviceId.exact') == selected
+            # Switching during reception also releases the track and starts a new decoder session.
+            page.select_option('#camera-select', first if selected != first else '')
+            page.wait_for_function("() => cameraTracks.length === 4 && cameraTracks[2].readyState === 'ended'")
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('Receiving')")
+            page.click('#stop')
+            assert page.evaluate("() => cameraTracks.every(track => track.readyState === 'ended')")
+            assert page.evaluate("() => document.querySelector('#source').srcObject === null")
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.evaluate("() => cameraTracks.at(-1).dispatchEvent(new Event('ended'))")
+            assert 'disconnected' in page.locator('#error').inner_text()
+            assert page.evaluate("() => cameraTracks.at(-1).readyState === 'ended'")
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.evaluate('''() => { Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+              document.dispatchEvent(new Event('visibilitychange')); }''')
+            assert page.locator('#camera-test-stop').is_disabled()
+            assert page.evaluate("() => cameraTracks.every(track => track.readyState === 'ended')")
+            page.evaluate('''() => { Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
+              window.holdCamera = true; }''')
+            page.click('#camera-test')
+            page.wait_for_function('() => typeof window.releaseCamera === "function"')
+            page.click('#camera-test-stop')
+            page.evaluate('() => window.releaseCamera()')
+            page.wait_for_function("() => cameraTracks.every(track => track.readyState === 'ended')")
+            assert page.locator('#camera-test').is_enabled()
+            assert not page.locator('#error').inner_text()
+            # A refresh must retain an explicitly selected but currently missing device.
+            chosen = page.locator('#camera-select').input_value()
+            page.evaluate('() => { navigator.mediaDevices.enumerateDevices = async () => []; }')
+            page.click('#camera-refresh')
+            page.wait_for_function("() => document.querySelector('#camera-list-note').textContent.includes('list is empty')")
+            assert page.locator('#camera-select').input_value() == chosen
+            assert 'not in the current list' in page.locator('#camera-select option:checked').inner_text()
+            page.evaluate('''() => { navigator.mediaDevices.enumerateDevices = async () => {
+              throw new Error('enumeration unavailable'); }; }''')
+            page.click('#camera-refresh')
+            page.wait_for_function("() => document.querySelector('#camera-list-note').textContent.includes('list is unavailable')")
+            assert page.locator('#camera-test').is_enabled()
+            assert not errors, errors
+            report.append({'cameraUI': engine.name, 'listedCameras': len(choices), 'testAndReceiveSwitch': True,
+                'tracksReleased': True, 'hiddenStop': True, 'disconnect': True, 'latePermissionReleased': True,
+                'emptyAndUnavailableList': True, 'previewSizes': [320, 1280]})
+            print('camera UI', engine.name, 'PASS', len(choices), flush=True)
+            context.close()
+            for name, message in [('NotAllowedError', 'permission was denied'), ('NotFoundError', 'No available camera'),
+                ('NotReadableError', 'Cannot open the camera'), ('OverconstrainedError', 'selected camera is unavailable')]:
+                context = browser.new_context()
+                context.add_init_script('''navigator.mediaDevices.getUserMedia = async () => {
+                  throw new DOMException('test failure', ''' + json.dumps(name) + '''); };''')
+                page = context.new_page()
+                errors = errors_for(page)
+                page.goto(url + '?lang=en')
+                page.select_option('#role', 'receive')
+                page.click('#camera-test')
+                page.wait_for_function('(text) => document.querySelector("#error").textContent.includes(text)', arg=message)
+                assert page.locator('#start').is_enabled()
+                assert page.locator('#camera-test').is_enabled()
+                assert page.locator('#camera-test-stop').is_disabled()
+                assert not errors, errors
+                context.close()
+            report.append({'cameraErrors': engine.name, 'deniedMissingBusyUnavailable': True})
+        finally:
+            browser.close()
+
+
 def camera_adapter(p, url, report):
     browser = p.chromium.launch(args=['--use-fake-ui-for-media-stream',
         '--use-fake-device-for-media-stream=device-count=2,fps=30'])
@@ -380,6 +512,7 @@ def main():
             interface(p, urls, report)
             print('UI PASS', len(report), flush=True)
             camera_adapter(p, url, report)
+            camera_ui(p, url, report)
             screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)

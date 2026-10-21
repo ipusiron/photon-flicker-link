@@ -101,6 +101,20 @@
     </section>
     <section id="receiver" class="card" aria-labelledby="rx-title" hidden>
       <h2 id="rx-title"><span class="number">04</span> <span data-i18n="receiver"></span></h2>
+      <div id="camera-fields" hidden>
+        <div class="field"><label for="camera-select" data-i18n="cameraSelect"></label>
+          <select id="camera-select" aria-describedby="camera-list-note camera-note"></select>
+        </div>
+        <p id="camera-list-note" class="muted" role="status"></p>
+        <div class="actions">
+          <button id="camera-refresh" type="button" data-i18n="cameraRefresh"></button>
+          <button id="camera-test" type="button" data-i18n="cameraTest"></button>
+          <button id="camera-test-stop" type="button" data-i18n="cameraTestStop" disabled></button>
+        </div>
+        <p id="camera-note" class="muted" data-i18n="cameraNote"></p>
+        <p id="camera-check" role="status"></p>
+        <p id="camera-details" class="mono"></p>
+      </div>
       <video id="source" muted playsinline hidden></video>
       <canvas id="sample" width="640" height="480" hidden></canvas>
       <canvas id="preview" width="640" height="480" role="img" data-label="previewLabel"></canvas>
