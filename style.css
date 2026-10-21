@@ -239,7 +239,7 @@ canvas {
 .card canvas[id="tx"] {
   max-width: 640px;
   height: auto;
-  aspect-ratio: 8 / 3;
+  aspect-ratio: 2 / 1;
   margin-inline: auto;
 }
 .card canvas[id="preview"] {
@@ -266,6 +266,58 @@ canvas {
 }
 .receive-monitor, #region-panel {
   min-width: 0;
+}
+.receive-stage {
+  margin-top: 0;
+}
+.receive-feedback {
+  container-type: inline-size;
+  margin-block: 12px;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
+  padding: 12px;
+}
+.meter-label, .meter-estimate {
+  margin-block: 8px;
+  font-weight: 600;
+}
+#receive-meter {
+  display: block;
+  width: 100%;
+  height: 24px;
+  accent-color: var(--accent);
+}
+.signal-readiness {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+}
+.signal-readiness div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.signal-readiness dd {
+  margin: 0;
+  font-weight: 600;
+}
+.signal-readiness [data-state="found"], .signal-readiness [data-state="sufficient"] {
+  color: var(--accent);
+}
+.signal-readiness [data-state="missing"], .signal-readiness [data-state="insufficient"] {
+  color: var(--warning);
+}
+.signal-readiness [data-state="unmeasured"] {
+  color: var(--muted);
+}
+@container (min-width: 480px) {
+  .signal-readiness {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .signal-readiness div {
+    display: block;
+  }
 }
 #region-panel h3 {
   margin-top: 0;
@@ -297,6 +349,20 @@ canvas {
   padding: 12px;
   border: 1px solid var(--border);
   font: 1.2rem/1.6 var(--mono);
+}
+.live-box {
+  display: grid;
+}
+.live-box > * {
+  grid-area: 1 / 1;
+}
+.live-placeholder {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  pointer-events: none;
+  white-space: pre-line;
 }
 .table-wrap {
   max-width: 100%;

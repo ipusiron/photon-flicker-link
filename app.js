@@ -84,7 +84,7 @@
     if (quality) {
       $('signal-health').textContent = t('signalHealth', { quality: (quality.quality * 100).toFixed(0),
         data: quality.data.toFixed(3), clock: quality.clock.toFixed(3) });
-      $('signal-advice').textContent = t(!quality.found ? 'panelMissing' : quality.quality < C.CONFIDENCE ? 'panelWeak' : 'panelFound');
+      $('signal-advice').textContent = t(!quality.found ? panelFailure() : quality.quality < C.CONFIDENCE ? 'panelWeak' : 'panelFound');
     }
     $('env-callback').textContent = environment?.callback ||
       ('requestVideoFrameCallback' in HTMLVideoElement.prototype ? 'rVFC' : 'rAF');
@@ -194,7 +194,7 @@
         sample: capture.samples.length, ...Object.fromEntries(keys.filter(k => k in event).map(k => [k, event[k]])) });
       else if (event.type !== 'text') capture.truncated = true;
     }
-    if (event.type === 'sync') { sync = event; status = 'decoding'; error = ''; }
+    if (event.type === 'sync') { sync = event; receiveProgress = null; status = 'decoding'; error = ''; }
     if (event.type === 'symbol') {
       marks.push(event); receiveProgress = event;
       if (sync && Number.isFinite(event.period)) {
@@ -337,6 +337,62 @@
     quality = null;
     $('signal-health').textContent = ''; $('signal-advice').textContent = '';
   }
+  function panelFailure() {
+    return quality?.reason && Object.hasOwn(M[language], quality.reason) ? quality.reason : 'panelMissing';
+  }
+  function receiveStage() {
+    if (!camera.active) {
+      if (busy && currentRole !== 'send') return t('stageOpening');
+      const stopped = capture?.stopReason || ['stopped', 'failed', 'hidden', 'timeout', 'complete'].includes(status);
+      return t(stopped ? 'stageStopped' : 'stageReady', { reason: t(capture?.stopReason || status) });
+    }
+    let stage;
+    if (!quality) stage = t('stageOpening');
+    else if (!quality.found) {
+      stage = t(panelFailure());
+      if (Number.isInteger(quality.markerCount)) stage = t('stageMarkers', { count: quality.markerCount, stage });
+    }
+    else if (testingCamera) stage = t('stageTestPanel');
+    else if ((quality.clockQuality ?? quality.quality) < C.CONFIDENCE || Math.abs(quality.clock) < C.MIN_SPAN) {
+      stage = t('stageClock');
+    } else if (blockProgress && blockProgress.blocks < blockProgress.total && Number.isFinite(receiveProgress?.total) &&
+        receiveProgress?.index + 1 >= receiveProgress?.total) {
+      stage = t('stageNextBlock', blockProgress);
+    } else if (sync) {
+      const values = { count: receiveProgress ? receiveProgress.index + 1 : 0, total: receiveProgress?.total ?? '?',
+        blocks: blockProgress?.blocks ?? 0, blockTotal: blockProgress?.total ?? '?' };
+      stage = t(receiveProgress ? 'stageBits' : 'stageHeader', values);
+      if ((quality.dataQuality ?? quality.quality) < C.CONFIDENCE) stage += ' ' + t('stageDataErasure');
+    } else stage = t('stagePreamble');
+    return testingCamera ? t('stageCameraTest', { stage }) : stage;
+  }
+  function contrastSufficient(channel) {
+    return camera.active && quality?.found && (quality[channel + 'Quality'] ?? quality.quality) >= C.CONFIDENCE &&
+      Number.isFinite(quality[channel]) && Math.abs(quality[channel]) >= C.MIN_SPAN;
+  }
+  function renderReceiveFeedback(receiving) {
+    const tracking = !!sync && !testingCamera, known = Number.isFinite(receiveProgress?.total);
+    const count = tracking ? receiveProgress?.index + 1 || 0 : 0, total = tracking ? known ? receiveProgress.total : 16 : 1;
+    const meter = $('receive-meter');
+    meter.max = total; meter.value = count;
+    const label = tracking ? t(known ? 'meterBlock' : 'meterHeader', { count, total }) :
+      t(testingCamera ? 'meterTest' : receiving ? 'meterWaiting' : capture ? 'meterStopped' : 'meterReady');
+    $('receive-meter-label').textContent = tracking && !receiving ? t('meterLast', { label }) : label;
+    const estimating = receiving && tracking && known && count < total && contrastSufficient('clock') && Number.isFinite(sync.period);
+    $('receive-estimate').hidden = !estimating;
+    $('receive-estimate').textContent = estimating ? t('meterEstimate', { seconds: Math.ceil((total - count) * sync.period) }) : '';
+    const panelState = !camera.active || !quality ? 'unmeasured' : quality.found ? 'found' : 'missing';
+    $('signal-panel').dataset.state = panelState;
+    $('signal-panel').textContent = t('signalState_' + panelState);
+    for (const channel of ['data', 'clock']) {
+      const state = panelState !== 'found' ? 'unmeasured' : contrastSufficient(channel) ? 'sufficient' : 'insufficient';
+      $('signal-' + channel).dataset.state = state;
+      $('signal-' + channel).textContent = t('signalState_' + state);
+    }
+    $('live-empty').hidden = live.length > 0;
+    $('live-empty').textContent = t(testingCamera ? 'liveTestEmpty' : 'liveFirstWait');
+    $('live-note').hidden = live.length === 0;
+  }
   function renderReceiveState() {
     const receiving = busy && !testingCamera && currentRole !== 'send';
     const stats = camera.info;
@@ -345,6 +401,9 @@
       testingCamera ? t('graphTestOnly') : trace.length ? t('graphStopped', { reason: t(capture?.stopReason || status) }) : t('graphReady');
     $('receive-again').hidden = busy || $('role').value !== 'receive' || !capture;
     $('diagnostic-save').disabled = !capture?.samples.length;
+    $('receive-stage').textContent = receiveStage();
+    $('live-note').textContent = t(testingCamera ? 'liveTestNote' : 'liveBlockNote');
+    renderReceiveFeedback(receiving);
   }
   function recordFrame(frame) {
     if (!capture) return;
@@ -388,9 +447,16 @@
       ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
       ctx.setLineDash([]);
       if (quality?.found && quality.rect) {
-        const panel = quality.rect;
-        ctx.lineWidth = 3; ctx.strokeStyle = css.getPropertyValue('--accent');
-        ctx.strokeRect(panel.x * preview.width, panel.y * preview.height, panel.w * preview.width, panel.h * preview.height);
+        const panel = quality.rect, corners = quality.outerGeometry;
+        const polygon = Array.isArray(corners) && corners.length === 4 &&
+          corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+        ctx.beginPath();
+        if (polygon) {
+          corners.forEach((point, i) => { if (i) ctx.lineTo(point.x, point.y); else ctx.moveTo(point.x, point.y); });
+          ctx.closePath();
+        } else ctx.rect(panel.x * preview.width, panel.y * preview.height, panel.w * preview.width, panel.h * preview.height);
+        ctx.lineWidth = 5; ctx.strokeStyle = css.getPropertyValue('--roi-dark'); ctx.stroke();
+        ctx.lineWidth = 3; ctx.strokeStyle = css.getPropertyValue('--accent'); ctx.stroke();
       }
       const size = 12 * preview.width / (preview.clientWidth || preview.width);
       for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) {

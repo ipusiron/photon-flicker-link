@@ -21,12 +21,12 @@ function cameraImage(frame, gain, background, obscured = '') {
       }
     }
   } };
-  P.draw(ctx, 640, 240, frame, S.config());
+  P.draw(ctx, 640, 320, frame, S.config());
   if (obscured) {
     const gray = S.linearToSrgb(0.25);
     ctx.fillStyle = `rgb(${gray}, ${gray}, ${gray})`;
-    const fields = obscured === 'data' ? [32, 180] : [328, 476];
-    fields.forEach(x => ctx.fillRect(x, 32, 132, 176));
+    const fields = obscured === 'data' ? [48, 192] : [336, 480];
+    fields.forEach(x => ctx.fillRect(x, 120, 112, 80));
   }
   return { width, height, data: raw };
 }

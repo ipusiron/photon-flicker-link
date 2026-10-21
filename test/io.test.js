@@ -439,7 +439,7 @@ test('Spatial transmitter aborts a 120 ms delay instead of reporting an invalid 
 
 test('Spatial initial panel is detectable and stays unchanged through preparation, stop and hide', () => {
   const f = fixture(), frames = [], counts = [], stops = [];
-  f.canvas.width = 640; f.canvas.height = 240;
+  f.canvas.width = 640; f.canvas.height = 320;
   const width = f.canvas.width, height = f.canvas.height, data = new Uint8ClampedArray(width * height * 4);
   f.canvas.getContext().fillRect = function (x, y, w, h) {
     const value = Number(this.fillStyle.match(/\d+/)[0]);
@@ -546,7 +546,7 @@ test('Actual scheduled spatial paints remain decodable with independent 30 fps c
 });
 
 test('Spatial camera passes full image geometry and crop to the optical reader', async () => {
-  const f = readyCameraFixture(), frames = [], width = 640, height = 240;
+  const f = readyCameraFixture(), frames = [], width = 640, height = 320;
   const data = new Uint8ClampedArray(width * height * 4);
   const painter = { fillStyle: '', fillRect(x, y, w, h) {
     const value = Number(this.fillStyle.match(/\d+/)[0]);

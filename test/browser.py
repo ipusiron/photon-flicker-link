@@ -21,7 +21,7 @@ OUT = ROOT / '.work' / ('browser-' + datetime.now().strftime('%Y%m%d_%H%M%S'))
 OUT.mkdir(parents=True, exist_ok=True)
 
 
-def movie(mode='mono', text='LIGHT', levels=2, rate=8):
+def movie(mode='mono', text='LIGHT', levels=2, rate=8, perspective=False):
     # Rasterize the shipped transmitter, then encode independent camera frames.
     # It carries one temporal bit, not a spatial payload or barcode.
     code = r'''const C=require('./spatial-codec.js'),P=require('./optical-panel.js'),G=require('./codec-core.js');
@@ -30,18 +30,32 @@ def movie(mode='mono', text='LIGHT', levels=2, rate=8):
         const image=Buffer.alloc(320*240*3,128);
         const ctx={fillStyle:'',fillRect(x,y,w,h) {
           const rgb=this.fillStyle.match(/\d+/g).map(Number).map(v=>G.linearToSrgb(G.srgbToLinear(v)*.65+.07));
-          for(let yy=Math.floor(y+66);yy<Math.ceil(y+h+66);yy++)
+          for(let yy=Math.floor(y+48);yy<Math.ceil(y+h+48);yy++)
             for(let xx=Math.floor(x+16);xx<Math.ceil(x+w+16);xx++)
               for(let c=0;c<3;c++)image[(yy*320+xx)*3+c]=rgb[c];
         }};
-        if(key==='idle')P.idle(ctx,288,108);
-        else P.draw(ctx,288,108,{bit:Number(key[0]),clock:Number(key[1])},tx.settings);
-        rasters[key]=image.toString('base64');
+        if(key==='idle')P.idle(ctx,288,144);
+        else P.draw(ctx,288,144,{bit:Number(key[0]),clock:Number(key[1])},tx.settings);
+        // Independent camera warp: true perspective with a 15% shorter right edge, plus reflection.
+        // Production drawing supplies pixels only; the detector receives no pose information.
+        let observed=image;
+        if(process.argv[3]==='perspective') {
+          observed=Buffer.alloc(320*240*3,128);
+          for(let y=0;y<240;y++)for(let x=0;x<320;x++) {
+            const qx=(x+.5-16)/288,qy=(y+.5-48)/144,k=.85,a=(1-k)/2;
+            const u=k*qx/(1-(1-k)*qx),v=(qy*(k+(1-k)*u)-a*u)/k;
+            if(u<0||u>=1||v<0||v>=1)continue;
+            const sx=Math.min(303,Math.floor(16+(1-u)*288)),sy=Math.floor(48+v*144);
+            for(let c=0;c<3;c++)observed[(y*320+x)*3+c]=image[(sy*320+sx)*3+c];
+          }
+        }
+        rasters[key]=observed.toString('base64');
       }
       console.log(JSON.stringify({tx,rasters}));'''
-    generated = json.loads(subprocess.check_output(['node','-e',code,json.dumps(text),str(rate)],cwd=ROOT,text=True,encoding='utf-8'))
+    generated = json.loads(subprocess.check_output(['node','-e',code,json.dumps(text),str(rate),
+        'perspective' if perspective else 'flat'],cwd=ROOT,text=True,encoding='utf-8'))
     tx, rasters = generated['tx'], {key:base64.b64decode(value) for key,value in generated['rasters'].items()}
-    suffix = '' if rate == 8 else f'-rate{rate}'
+    suffix = ('' if rate == 8 else f'-rate{rate}') + ('-perspective' if perspective else '')
     file = OUT / f'{mode}-{levels}{suffix}.webm'
     process = subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo',
         '-pixel_format','rgb24','-video_size','320x240','-framerate','30','-i','pipe:0',
@@ -272,6 +286,10 @@ def camera_ui(p, url, report):
                     for language in ['en', 'ja']:
                         if page.locator('html').get_attribute('lang') != language:
                             page.click('#language')
+                        test_label = 'Camera test: text is not decoded' if language == 'en' else 'カメラテスト中・文字は復号しません'
+                        assert test_label in page.locator('#receive-stage').inner_text()
+                        note = 'Camera test does not decode text' if language == 'en' else 'カメラテストでは文字を復号しません'
+                        assert note in page.locator('#live-note').inner_text()
                         layout(page)
                         if language == 'en':
                             no_japanese(page)
@@ -304,9 +322,12 @@ def camera_ui(p, url, report):
             assert page.evaluate("() => cameraTracks.every(track => track.readyState === 'ended')")
             page.evaluate('''() => { Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
               window.holdCamera = true; }''')
+            page.click('#clear')
+            assert 'Video has not started' in page.locator('#receive-stage').inner_text()
             page.click('#camera-test')
             page.wait_for_function('() => typeof window.releaseCamera === "function"')
             page.click('#camera-test-stop')
+            assert 'Reception stopped' in page.locator('#receive-stage').inner_text()
             page.evaluate('() => window.releaseCamera()')
             page.wait_for_function("() => cameraTracks.every(track => track.readyState === 'ended')")
             assert page.locator('#camera-test').is_enabled()
@@ -397,7 +418,7 @@ def screen_transmission(p, url, report):
                   const screen=original.create(canvas,...args),start=screen.start;
                   screen.start=(text,cfg,onFrame,onStop,prepare)=>start(text,cfg,frame=>{
                     const ctx=canvas.getContext('2d');
-                    const pixels=[98,246,394,542].map(x=>ctx.getImageData(x,120,1,1).data[0]);
+                    const pixels=[104,248,392,536].map(x=>ctx.getImageData(x,160,1,1).data[0]);
                     sentFrames.push({index:frame.index,pixels,time:performance.now(),held:frame.previousHeldSeconds});
                     onFrame(frame);
                   },reason=>{window.senderTiming=screen.info;onStop(reason);},prepare);
@@ -439,8 +460,26 @@ def screen_transmission(p, url, report):
             assert min(actual_holds)>=.49 and max(actual_holds)<=.61,actual_holds
             assert page.locator('#start').is_enabled() and page.locator('#stop').is_disabled()
             assert not page.locator('#error').inner_text() and not errors,errors
+            page.select_option('#contrast', 'high')
+            page.evaluate('() => {sentFrames.length=0;}')
+            page.click('#start')
+            assert page.locator('#warning-dialog').is_visible()
+            page.click('#warning-cancel')
+            assert page.evaluate('() => sentFrames.length') == 0
+            page.click('#start')
+            page.click('#warning-accept')
+            page.wait_for_function('() => sentFrames.length>0', timeout=4000)
+            assert sorted(set(page.evaluate('() => sentFrames[0].pixels'))) == [33, 237]
+            high_panel = page.evaluate('''() => {const canvas=document.querySelector('#tx');
+              const v=PhotonPanel.read(canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height));
+              return {found:v.found,data:v.dataQuality,clock:v.clockQuality};}''')
+            assert high_panel == {'found': True, 'data': 1, 'clock': 1}, high_panel
+            page.click('#stop')
+            assert page.evaluate(idle_panel), 'High contrast stop must restore the static panel'
+            assert not errors, errors
             report.append({'sender':engine.name,'text':'A','symbols':len(frames),'rate':2,'timing':timing,
-                'elapsedSeconds':round(elapsed,3),'countdownSeconds':round(countdown_ms/1000,3),'allPixelsMatch':True})
+                'elapsedSeconds':round(elapsed,3),'countdownSeconds':round(countdown_ms/1000,3),'allPixelsMatch':True,
+                'highContrast':'33/237 pixels, confirmation/cancel, readable data and clock'})
             print('sender',engine.name,'PASS',round(elapsed,3),timing,flush=True)
         finally:
             browser.close()
@@ -528,6 +567,36 @@ def transmission(p, url, report, capture):
             print(mode, role, 'PASS', fps, flush=True)
             context.close()
             browser.close()
+
+
+def perspective_reception(p, url, report):
+    file = movie(perspective=True)
+    browser = p.chromium.launch()
+    try:
+        context = browser.new_context()
+        trace_receiver(context)
+        page = context.new_page()
+        errors = errors_for(page)
+        page.goto(url + '?lang=en')
+        page.select_option('#role', 'offline')
+        page.set_input_files('#video-input', str(file))
+        page.fill('#expected', 'LIGHT')
+        started = monotonic()
+        page.click('#start')
+        try:
+            page.wait_for_function("() => document.querySelector('#crc').textContent === 'Pass'", timeout=25000)
+        finally:
+            save_receiver_trace(page, 'perspective-reflection')
+        elapsed = monotonic() - started
+        assert elapsed < 25
+        assert page.locator('#result-text').inner_text() == 'LIGHT'
+        assert page.locator('#agreement').inner_text() == '100.0% / 0.0%'
+        assert not errors, errors
+        report.append({'path':['perspective15-reflection','offline'],'text':'LIGHT','crc':True,
+            'elapsedSeconds':round(elapsed,3),'fps':page.locator('#env-fps').inner_text()})
+        print('perspective/reflection PASS', round(elapsed,3), flush=True)
+    finally:
+        browser.close()
 
 
 def default_reception(p, url, report, capture=False):
@@ -703,6 +772,133 @@ def drag_region(page, engine):
         session.detach(); page.click('#region-reset')
 
 
+def reception_stages(page, engine, report):
+    expected = {
+        'en': ['Video has not started', 'Camera test: text is not decoded', 'Panel not detected',
+            'More than one panel candidate', 'waiting for clock contrast', 'Waiting for the preamble',
+            'Receiving the header', 'Receiving this block', 'Waiting for the next block', 'Reception stopped'],
+        'ja': ['映像の取得はまだ始まっていません', 'カメラテスト中・文字は復号しません', 'パネルを検出できません',
+            'パネルの候補が複数', 'クロックの明暗差を待っています', '同期列を待っています',
+            'ヘッダーを受信しています', 'このブロックを受信中', '次のブロックの同期列', '受信停止']
+    }
+    for width in [320, 1280]:
+        page.set_viewport_size({'width': width, 'height': 900})
+        for language in ['en', 'ja']:
+            if page.locator('html').get_attribute('lang') != language:
+                page.click('#language')
+            page.click('#clear')
+            words = expected[language]
+            assert words[0] in page.locator('#receive-stage').inner_text()
+            assert '40' in page.locator('#live-empty').inner_text() and '52' in page.locator('#live-empty').inner_text()
+            assert page.locator('#receive-stage').get_attribute('aria-live') == 'off'
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#live-empty').is_visible()
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [0, 1]
+            assert page.locator('#receive-estimate').is_hidden()
+            assert page.locator('#signal-data').get_attribute('data-state') == 'unmeasured'
+            page.click('#camera-test')
+            page.evaluate('''() => testReceive.frame(0,{found:false,data:0,clock:0,quality:0,
+              reason:'panelMissing',markerCount:0})''')
+            assert words[1] in page.locator('#receive-stage').inner_text()
+            assert words[2] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == ''
+            page.evaluate('''() => testReceive.frame(.2,{found:true,data:0,clock:0,quality:0,
+              dataQuality:0,clockQuality:0,markerCount:4})''')
+            assert words[1] in page.locator('#receive-stage').inner_text()
+            assert 'Start reception' in page.locator('#receive-stage').inner_text() if language == 'en' else \
+                '「受信開始」' in page.locator('#receive-stage').inner_text()
+            page.click('#camera-test-stop')
+            assert words[9] in page.locator('#receive-stage').inner_text()
+            assert words[0] not in page.locator('#receive-stage').inner_text()
+            page.click('#start')
+            page.evaluate('''() => testReceive.frame(0,{found:false,data:0,clock:0,quality:0,
+              reason:'panelMissing',markerCount:2})''')
+            assert words[2] in page.locator('#receive-stage').inner_text()
+            assert '2 / 4' in page.locator('#receive-stage').inner_text()
+            assert page.locator('#signal-panel').get_attribute('data-state') == 'missing'
+            assert page.locator('#signal-clock').get_attribute('data-state') == 'unmeasured'
+            page.evaluate('''() => testReceive.frame(.2,{found:false,data:0,clock:0,quality:0,
+              reason:'panelAmbiguous',markerCount:4})''')
+            assert words[3] in page.locator('#receive-stage').inner_text()
+            page.evaluate('''() => testReceive.frame(.4,{found:true,data:0,clock:0,quality:0,
+              dataQuality:0,clockQuality:0,markerCount:4})''')
+            assert words[4] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#signal-panel').get_attribute('data-state') == 'found'
+            assert page.locator('#signal-data').get_attribute('data-state') == 'insufficient'
+            assert page.locator('#signal-clock').get_attribute('data-state') == 'insufficient'
+            page.evaluate('''() => testReceive.frame(.6,{found:true,data:.17,clock:.17,quality:1,
+              dataQuality:1,clockQuality:1,markerCount:4})''')
+            assert words[5] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#signal-data').get_attribute('data-state') == 'sufficient'
+            assert page.locator('#signal-clock').get_attribute('data-state') == 'sufficient'
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [0, 1]
+            assert page.locator('#receive-estimate').is_hidden()
+            page.evaluate('''() => testReceive.frame(.8,{found:true,data:.001,clock:.17,quality:0,
+              dataQuality:0,clockQuality:1,markerCount:4})''')
+            assert page.locator('#signal-data').get_attribute('data-state') == 'insufficient'
+            assert page.locator('#signal-clock').get_attribute('data-state') == 'sufficient'
+            page.evaluate('''() => {
+              const tx=PhotonSpatial.transmission('LIGHT',PhotonSpatial.config({rate:2}));let n=0;
+              window.stageUntil = until => {for(;n/30<until;n++) {
+                const frame=tx.frames[Math.floor(n/15)];if(!frame)continue;
+                testReceive.frame(2+n/30,{found:true,data:frame.bit?.17:-.17,clock:frame.clock?.17:-.17,
+                  quality:1,dataQuality:1,clockQuality:1,markerCount:4});
+              }};
+            }''')
+            # Supply the normal 90 ms UI redraw cadence after each protocol event.
+            page.evaluate('() => stageUntil(8.2)')
+            assert words[6] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [0, 16]
+            assert page.locator('#receive-estimate').is_hidden()
+            page.evaluate('() => stageUntil(17.2)')
+            assert words[7] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#crc').inner_text() == '—'
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [18, 88]
+            assert page.locator('#receive-estimate').is_visible()
+            assert '35' in page.locator('#receive-estimate').inner_text()
+            layout(page)
+            if engine == 'chromium':
+                page.locator('.receive-monitor').screenshot(
+                    path=str(OUT / f'receive-progress-{width}-{language}.png'), caret='initial')
+            page.evaluate('() => stageUntil(52.2)')
+            assert words[8] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == 'LIGH'
+            assert '1 / 2' in page.locator('#block-progress').inner_text(), page.locator('#block-progress').inner_text()
+            assert page.locator('#crc').inner_text() == '—'
+            assert page.locator('#live-empty').is_hidden()
+            assert page.locator('#receive-estimate').is_hidden()
+            # A newly acquired header must replace the previous block's completed bit count.
+            page.evaluate('() => stageUntil(60.2)')
+            assert words[6] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [0, 16]
+            assert page.locator('#receive-estimate').is_hidden()
+            page.evaluate('() => stageUntil(60.9)')
+            assert words[7] in page.locator('#receive-stage').inner_text()
+            assert '1 / ?' in page.locator('#receive-stage').inner_text()
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [1, 16]
+            page.evaluate('() => stageUntil(93)')
+            assert words[9] in page.locator('#receive-stage').inner_text()
+            assert page.locator('#live').inner_text() == 'LIGHT'
+            assert page.locator('#crc').inner_text() == ('Pass' if language == 'en' else '成功')
+            assert page.locator('#receive-meter').evaluate('(el) => [el.value, el.max]') == [64, 64]
+            assert page.locator('#receive-estimate').is_hidden()
+            assert page.locator('#signal-data').get_attribute('data-state') == 'unmeasured'
+            layout(page)
+            if language == 'en':
+                no_japanese(page)
+    if page.locator('html').get_attribute('lang') != 'en':
+        page.click('#language')
+    page.set_viewport_size({'width': 320, 'height': 900})
+    page.click('#clear')
+    report.append({'receptionStages': engine, 'languages': ['en', 'ja'], 'widths': [320, 1280],
+        'emptyUntilCheckedBlock': True, 'cameraTestNoDecoding': True, 'secondHeaderReplacesCompletedCount': True,
+        'observedBitProgress': '18/88, 35s estimate; header reset 0/16 then 1/16; complete 64/64',
+        'independentContrastIndicators': True})
+
+
 def reception_diagnostics(p, url, report):
     for engine in [p.chromium, p.firefox, p.webkit]:
         browser = engine.launch()
@@ -736,6 +932,7 @@ def reception_diagnostics(p, url, report):
               dataQuality:frame&&!erased?1:0,clockQuality:frame?1:0});
           }
         };}''')
+        reception_stages(page, engine.name, report)
         page.click('#start')
         drag_region(page,engine.name)
         page.evaluate('() => packet(true)')
@@ -817,6 +1014,7 @@ def main():
             reception_diagnostics(p, url, report)
             screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
+            perspective_reception(p, url, report)
             default_reception(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)
     finally:

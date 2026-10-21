@@ -78,10 +78,10 @@ No installation is required. Defaults are binary monochrome, 2 symbol/s, low con
 
 Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider people nearby and stop if you feel unwell. Low speed and low contrast do not guarantee safety. The author does not encourage misuse.
 
-1. Open the demo on two devices. Reload both if you previously used V1 or V2. Adjust brightness while watching the receiver and avoid reflections.
+1. Open the demo on two devices and reload both. Use the version with thick L-shaped marks at all four corners. Adjust brightness while watching the receiver and avoid reflections.
 2. Choose Receive only on the receiver, press Test camera, and allow camera access. Check the camera name, resolution, sampled fps and video. Enable Show video preview if it is off.
 3. If there are multiple cameras, choose one under Camera to use. You can switch during testing. Use Refresh list if a connected camera is missing.
-4. Press Start reception. Fit the entire sending panel, including its fixed black and white frame, inside the measurement rectangle. Keep all four bars side by side and the devices still.
+4. Press Start reception. Fit the whole sending panel, including all four L-shaped corners and the top marks, inside the search area. Check that the detected quadrilateral follows the panel and keep the devices still.
 5. Choose Send only and start with `A`. Transmission begins after ③ → ② → ① → Start. Defaults take 3 seconds of preparation plus 41 seconds of transmission. Start reception first.
 6. Watch the data and clock traces and text appearing by block. Check CRC and UTF-8 at the end. Treat text from failed checks as unverified.
 7. Use Stop to interrupt, or Clear display to remove the result and measurements.
@@ -89,6 +89,22 @@ Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider
 Selecting Receive only does not start the camera or signal display. Press Start reception and grant permission to begin video, the trace and live decoding. Turning Show video preview off hides only the preview. On wide screens, rectangle controls sit to the right of the video; on narrow screens, they follow the video, live text and trace.
 
 Camera testing checks frame capture without decoding.
+Below the video, the receiver distinguishes panel search, synchronization and block reception.
+Text appears only after a block passes CRC. At the default rate, the first text takes about 40 seconds for `A` or 52 seconds for the `LIGH` prefix of `LIGHT` from transmission start.
+The three-second countdown is additional. The empty text area also shows these examples.
+
+The reception progress bar shows the observed bit position in the current block.
+Before synchronization, it stays in preparation; elapsed time alone does not advance it.
+After synchronization, it counts the 16 header bits. Once the block length is known, it shows progress through the whole block, including the header.
+Unreadable bits still count as observed positions, so this is not a count of recovered characters or a passing CRC.
+Remaining time is an estimate from the observed clock period. It appears only during active reception with synchronization, a known block length and a readable clock.
+The next block or resynchronization updates the progress reference. Stopping keeps the last position and clears the estimate.
+
+Separate indicators report whether the current data difference and clock difference are sufficient.
+They distinguish a missing panel, an unmeasured difference and an insufficient difference, so you can adjust brightness or angle while watching the video.
+A sufficient difference does not establish successful bit reception over time or a passing CRC.
+Updating video or traces does not mean that text is already verified.
+
 Opening has a 30-second limit; reception lasts at most 240 seconds after the first captured frame.
 Stop test, hiding the tab or reaching the deadline releases the camera.
 Starting reception during testing uses the same device with a fresh time allowance.
@@ -97,6 +113,9 @@ Switching cameras releases the old camera and restarts synchronization and decod
 Camera lists and names may be incomplete before permission is granted. An empty list alone does not prove that no camera is connected. Testing distinguishes permission denial, no camera, a camera that cannot be opened, and an unavailable selected device. Successful frame capture does not guarantee optical communication.
 
 The public interface offers one grayscale signaling method.
+Low contrast uses two gray levels; High uses near-black and near-white levels.
+Gray levels can be read when the receiver can distinguish the pair within the same image. Seeing changes by eye alone does not establish successful decoding.
+If the reported difference is insufficient, you can try High while watching the receiver. This setting is separate from reducing the device's screen brightness.
 Faster rates, high contrast and transmission with reduced motion enabled require confirmation.
 There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
 
@@ -110,9 +129,11 @@ To inspect a recording on one device, choose Offline decoding and select a video
 | Cameras | List and refresh, device selection, video/resolution/fps test; switching releases the previous camera |
 | Data pair | Left dark/right bright = 0; the reverse = 1. Compare within the same camera image |
 | Separate clock | The other two bars exchange brightness at every boundary, including repeated data bits |
-| Fixed frame | Locates the bars and supplies brightness references; carries no payload |
+| Fixed markers | Four L-shaped corners and asymmetric marks establish location and orientation; carry no payload |
 | Measurement rectangle | Search area enclosing the entire panel; corner resizing, moving and four sliders |
 | Trace | Simultaneous data and clock differences with distinct line styles |
+| Reception progress | Observed bit position in the current block, including unreadable positions; separate from CRC success |
+| Current contrast | Separate data and clock assessments; detecting a difference does not guarantee decoding |
 | Confidence | Brightness difference, noise and agreement across frames; not a probability of correctness |
 | `?` | A character containing low-confidence or missing symbols |
 | CRC | CRC-8 per block and CRC-16 for the whole message; separate from encryption, authentication and error correction |
@@ -130,7 +151,8 @@ V3 is incompatible with V1/V2 transmissions and recordings.
 The panel contains two data bars and two clock bars, for four bars in total.
 Only one payload bit is sent at each instant, and reconstructing text requires a sequence of observations.
 It does not transfer data using QR, animated QR, color codes or a custom two-dimensional barcode.
-The fixed frame locates the bars; it does not arrange message bits across a spatial data grid.
+Fixed markers locate and orient the bars; they do not arrange message bits across a spatial data grid.
+The panel differs from V3 before the corner-marker update, so reload both endpoints.
 
 - Repeated values: the clock pair changes even when the data pair stays the same, marking the next bit.
 - Brightness changes: compare two bars in the same image, normalized against the fixed frame. Missing contrast is not guessed.
@@ -145,14 +167,14 @@ See the [wire format and receiver details](docs/protocol-v3.md).
 
 ### When reception is unstable
 
-Fit the entire sending panel, including the fixed black and white frame, inside the measurement rectangle.
+Fit the whole sending panel, including all four L-shaped corners and the top marks, inside the search area.
 Showing only some bars is insufficient to locate the panel and its references.
 Drag a corner to resize, inside to move or from outside to create a new rectangle.
 Releasing applies the search area and restarts synchronization. Sliders provide the same adjustment.
 
 Keep the panel large in the image, nearly front-facing and steady.
-Keep it upright with four bars side by side. A 180-degree rotation or mirrored image is not corrected automatically.
-Partial frames, steep angles, very small images and multiple candidates are rejected.
+Static marks establish the order of the four bars and compensate for rotation, mirroring and perspective.
+Missing marks, uncertain orientation, steep angles, very small images and multiple candidates are rejected.
 Excessive dimming, clipping, reflections and movement can also cause failure.
 Watch the image, panel detection and data/clock differences while adjusting; lowering brightness indefinitely is not a remedy.
 
@@ -162,7 +184,8 @@ See [Apple's instructions](https://support.apple.com/en-us/109351).
 The tool does not lock screen brightness or change camera exposure/WB to manual at reception startup.
 
 The owner reported that V2 reached Decoding but failed in monochrome and blue/red when sending from iPhone to PC/Vivaldi.
-Without physical sample traces, that failure remains unidentified. V3 physical reception is awaiting owner testing (本人確認待ち).
+The owner also reported no decoded text or automatic panel detection in V3, in both directions between iPhone and PC browsers.
+Without physical sample traces, the cause remains unidentified. Resolution by this corner-marker update is awaiting owner testing (本人確認待ち).
 Automated success does not establish that this reported problem is resolved.
 
 Above the graph, remaining time, sample count and stop reason are shown.
@@ -314,6 +337,7 @@ photon-flicker-link/          # Project
     ├── codec.test.js        # Pure functions and synthetic conditions
     ├── reliable.test.js     # V2 known answers, gaps, clocks and gain changes
     ├── spatial.test.js      # V3 synchronization, blocks, retries and rejection
+    ├── marker-camera.test.js # Independent perspective, blur, reflection and decoding fixtures
     ├── panel.test.js        # Panel position, gain, cropping and angle
     ├── channel.test.js      # Rendering through simulated capture and decoding
     ├── io.test.js           # IO lifecycle and interruption

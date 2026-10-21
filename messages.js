@@ -31,11 +31,9 @@
       "arby and stop if you feel unwell. This is not a medical device."
     ],
     "setup": [
-      "最初は2 symbol/s・低コントラストを使います。受信を先に開始し、送信パネル全体と白い外枠をカメラに入れます。ほぼ水平に固定し、「パネルを検出」を確認してから送信してください" +
-      "。",
-      "Start at 2 symbol/s and low contrast. Start reception first. Include the entire panel and " +
-      "its white border in the camera view, keep it nearly level, and check that the panel is det" +
-      "ected before sending."
+      "最初は2 symbol/s・低コントラストを使います。受信を先に開始し、四隅の固定マーカーを含む送信パネル全体をカメラに入れます。できるだけ正面から大きく映し、パネル検出を確認してから送信してください。",
+      "Start at 2 symbol/s and low contrast. Start reception first. Show the whole panel, including all four fixed corner markers, " +
+      "large and as front-on as possible. Confirm panel detection before sending."
     ],
     "privacy": [
       "録画しません。映像はフレームごとに処理し、通信内容や動画を保存・送信しません。保存する設定は言語と明暗だけです。",
@@ -59,17 +57,24 @@
       "Transmit contrast"
     ],
     "low": [
-      "低い（初期値）",
-      "Low (default)"
+      "小さい（灰色、初期値）",
+      "Low (gray, default)"
     ],
     "high": [
-      "高い（注意）",
-      "High (caution)"
+      "大きい（近黒・近白、注意）",
+      "High (near-black / near-white, caution)"
+    ],
+    "contrastNote": [
+      "灰色同士の小さな明暗差でも、カメラが差を十分に取得できれば復号できます。受信映像の下でデータとクロックの判定を確認してください。差が不足する場合は、停止して送信側を「大きい」に変更できます。" +
+      "明暗差は増えますが、反射・白飛び・パネル未検出の解消や受信成功を保証しません。",
+      "Gray levels can be decoded when the camera measures enough contrast. Check the data and clock indicators below the receiver video. " +
+      "If contrast is insufficient, stop and choose High on the sender. This increases contrast but does not guarantee panel detection or successful " +
+      "reception, or resolve reflections and clipping."
     ],
     "settingsNote": [
-      "送受信の両端を再読み込みしてv3にそろえてください。受信側はクロック領域から区切りを読みます。送信は1回で終わります。v1/v2の信号とは互換性がありません。",
-      "Reload both endpoints to use v3. The receiver reads bit boundaries from the clock areas. T" +
-      "ransmission ends after one packet. V1/v2 signals are incompatible."
+      "送受信の両端を再読み込みして、同じ最新版のパネルを使ってください。受信側はクロック領域から区切りを読みます。送信は1回で終わります。旧形式のパネルとは互換性がありません。",
+      "Reload both endpoints to use the same latest panel. The receiver reads bit boundaries from the clock areas. " +
+      "Transmission ends after one packet. Earlier panel formats are incompatible."
     ],
     "environment": [
       "この環境",
@@ -307,11 +312,10 @@
       "Optical signal display"
     ],
     "txNote": [
-      "左の2領域でデータ、右の2領域でクロックを表します。各組は互いに明暗が逆です。区切りごとに1ビットだけ送り、同じビットが続いてもクロックが変化します。白い外枠を含む全体を受信側に映" +
-      "してください。",
+      "左の2領域でデータ、右の2領域でクロックを表します。各組は互いに明暗が逆です。区切りごとに1ビットだけ送り、同じビットが続いてもクロックが変化します。四隅の固定マーカーを含む全体を受信側に映してください。",
       "The left pair carries data; the right pair carries the clock. Each pair uses complementary" +
       " brightness. Only one bit is sent per interval; the clock changes even when data repeats. " +
-      "Show the receiver the whole panel, including its white border."
+      "Show the receiver the whole panel, including all four fixed corner markers."
     ],
     "receiver": [
       "カメラから文字へ",
@@ -330,17 +334,15 @@
       "Panel search region"
     ],
     "regionCoverage": [
-      "白い外枠を含む送信パネル全体を、破線の探索範囲に入れてください。",
-      "Include the entire transmission panel and its white border inside the dashed search region" +
-      "."
+      "四隅の固定マーカーを含む送信パネル全体を、破線の探索範囲に入れてください。",
+      "Include the whole transmission panel and all four fixed corner markers inside the dashed search region."
     ],
     "regionNote": [
-      "通常は映像全体からパネルを自動検出します。破線は探索範囲、色の実線は検出位置です。パネルの一部だけでは読めません。ほぼ水平に保ち、大きく映してください。四隅でサイズ変更、枠内で移動" +
-      "、枠外で新しい枠を指定できます。指を離すと同期をやり直します。",
-      "The whole image is searched by default. Dashed lines mark the search region; a colored sol" +
-      "id outline marks the detected panel. A partial panel cannot be read. Keep it nearly level " +
-      "and large in the view. Drag corners to resize, inside to move, or outside to draw a new re" +
-      "gion. Release to restart synchronization."
+      "通常は映像全体から自動検出します。破線は探索範囲、色の実線は検出した四隅です。送信側の固定マーカー4個を隠さず映してください。配置を一意に判定できた場合だけ、回転や反転を補正します。" +
+      "探索枠の四隅でサイズ変更、枠内で移動、枠外で新しい枠を指定できます。指を離すと同期をやり直します。",
+      "The whole image is searched by default. Dashed lines mark the search region; the colored outline follows detected corners. " +
+      "Keep all four transmitter markers visible. Rotation or reflection is corrected only when the pose is uniquely identified. " +
+      "Drag search-box corners to resize, inside to move, or outside to draw a new box. Release to restart synchronization."
     ],
     "roiX": [
       "左端（%）",
@@ -445,8 +447,8 @@
       "Choose a video and press Start to play it and analyze the signal."
     ],
     "liveTitle": [
-      "ライブ復号（途中経過）",
-      "Live decoding (provisional)"
+      "受信文字（ブロック検査後）",
+      "Received text (after block checks)"
     ],
     "results": [
       "受信結果",
@@ -731,9 +733,9 @@
       "probability of correct decoding."
     ],
     "panelMissing": [
-      "パネルを読めません。白い外枠を含む全体を大きく、ほぼ水平に映し、反射・ピント・白飛びを確認してください。パネルは1つだけにします。読めないフレームは復号に使いません。",
-      "Panel unreadable. Show one whole panel, including its white border, large and nearly level" +
-      ". Check reflections, focus and clipping. Unreadable frames are not decoded."
+      "パネルを検出できません。四隅の固定マーカーを含む全体を大きく映し、反射・ピント・白飛びを確認してください。パネルは1つだけにします。配置を判定できないフレームは復号に使いません。",
+      "Panel not detected. Show one whole panel and all four fixed corner markers large in the view. Check reflections, focus and clipping. " +
+      "Frames whose pose cannot be identified are not decoded."
     ],
     "dataPanels": [
       "データと反転データ",
@@ -744,8 +746,8 @@
       "Clock and complement"
     ],
     "referenceBorder": [
-      "白い外枠と暗い内枠",
-      "Light border and dark guard"
+      "固定マーカーと明暗の基準",
+      "Fixed markers and brightness references"
     ],
     "dataTradeoff": [
       "同時に映る2領域の明暗差で0/1を読む",
@@ -778,6 +780,152 @@
     "header": [
       "保護されたヘッダー",
       "Protected header"
+    ],
+    "panelAmbiguous": [
+      "パネルの候補が複数あるか、目印の候補が多すぎます。送信パネルを1つだけ映すか、探索範囲を絞ってください。",
+      "More than one panel candidate, or too many marker candidates, were found. Show one transmitter or narrow the search region."
+    ],
+    "stageReady": [
+      "映像の取得はまだ始まっていません。「受信開始」または「カメラをテスト」を押してください。",
+      "Video has not started. Choose Start reception or Test camera."
+    ],
+    "stageOpening": [
+      "映像の最初のフレームを待っています。",
+      "Waiting for the first video frame."
+    ],
+    "stageMarkers": [
+      "四隅の候補：{count} / 4。{stage}",
+      "Corner candidates: {count} / 4. {stage}"
+    ],
+    "stageStopped": [
+      "受信停止：{reason}。映像と信号は更新していません。",
+      "Reception stopped: {reason}. Video and signal measurements are not updating."
+    ],
+    "stageCameraTest": [
+      "カメラテスト中・文字は復号しません。{stage}",
+      "Camera test: text is not decoded. {stage}"
+    ],
+    "stageTestPanel": [
+      "パネルを検出しました。「受信開始」で信号の受信へ進みます。",
+      "Panel detected. Choose Start reception to receive its signal."
+    ],
+    "stageClock": [
+      "パネルを検出しました。クロックの明暗差を待っています。送信前の静止表示では正常です。受信を続けたまま送信を開始してください。",
+      "Panel detected; waiting for clock contrast. This is normal before transmission. Keep reception active and start the sender."
+    ],
+    "stagePreamble": [
+      "パネルとクロックの明暗差を検出しました。同期列を待っています。まだ本文は確定していません。",
+      "Panel and clock contrast detected. Waiting for the preamble; payload text has not been validated yet."
+    ],
+    "stageHeader": [
+      "同期列を取得しました。ヘッダーを受信しています。文字はブロックの検査後に表示します。",
+      "Preamble acquired. Receiving the header; text appears after block validation."
+    ],
+    "stageBits": [
+      "このブロックを受信中：{count} / {total}ビット。検査済みブロック：{blocks} / {blockTotal}。",
+      "Receiving this block: {count} / {total} bits. Validated blocks: {blocks} / {blockTotal}."
+    ],
+    "stageDataErasure": [
+      "現在のデータ差は不足しています。クロックを維持できる間は、読めないビットを欠落として扱います。",
+      "Data contrast is currently insufficient. With a readable clock, undecidable bits are retained as erasures."
+    ],
+    "stageNextBlock": [
+      "ブロック {blocks} / {total}の検査が済みました。次のブロックの同期列を待っています。",
+      "Validated {blocks} / {total} blocks. Waiting for the next block's preamble."
+    ],
+    "liveTestNote": [
+      "カメラテストでは文字を復号しません。「受信開始」を押してください。文字が残っている場合は前回の結果です。",
+      "Camera test does not decode text. Choose Start reception. Any text still displayed belongs to the previous reception."
+    ],
+    "liveBlockNote": [
+      "CRC検査済みのブロックを表示しています。全文の受信成功は、結果欄のCRCで確認してください。",
+      "These blocks passed CRC. Check the result CRC to confirm reception of the whole message."
+    ],
+    "liveFirstWait": [
+      "文字はブロック検査の後に出ます。\n2 symbol/sの例：A → 約40秒、LIGHT → 約52秒\n送信前の準備3秒は別です。上のバーで進行を確認できます。",
+      "Text appears after block checks.\nExamples at 2 symbol/s: A → about 40 s; LIGHT → about 52 s\nAdd 3 s for sender preparation. Follow the bar above."
+    ],
+    "liveTestEmpty": [
+      "カメラテストでは文字は表示されません。\n「受信開始」を押すと、信号を測定してブロックを検査します。",
+      "Camera test does not display received text.\nChoose Start reception to measure the signal and validate blocks."
+    ],
+    "meterReady": [
+      "受信はまだ始まっていません",
+      "Reception has not started"
+    ],
+    "meterWaiting": [
+      "準備中：同期列を待っています",
+      "Preparing: waiting for the preamble"
+    ],
+    "meterTest": [
+      "カメラテスト：ビットは受信していません",
+      "Camera test: bits are not being received"
+    ],
+    "meterStopped": [
+      "受信を停止しました。現在は同期していません",
+      "Reception stopped without a current synchronization"
+    ],
+    "meterHeader": [
+      "ヘッダーの受信位置：{count} / {total}ビット",
+      "Header position: {count} / {total} bits"
+    ],
+    "meterBlock": [
+      "このブロックの受信位置：{count} / {total}ビット（ヘッダーを含む）",
+      "Block position: {count} / {total} bits, including the header"
+    ],
+    "meterLast": [
+      "停止時の位置 — {label}",
+      "Position at stop — {label}"
+    ],
+    "meterEstimate": [
+      "このブロックの検査まで約{seconds}秒。同じ周期で受信が続く場合の目安です。",
+      "About {seconds} s until this block is checked, if reception continues at the observed rate."
+    ],
+    "meterNote": [
+      "最初はヘッダー16ビット、長さが判明するとブロック全体を示すバーに変わります。判別不能のビットも受信位置に含みます。バーは時間だけでは進まず、検査を通るまで文字は出ません。",
+      "The bar first covers the 16-bit header, then the whole block once its length is known. Undecidable bits still count as received positions. " +
+      "Time alone does not advance the bar; text appears only after validation."
+    ],
+    "signalPanelLabel": [
+      "送信パネル",
+      "Transmitter panel"
+    ],
+    "signalDataLabel": [
+      "データの明暗差",
+      "Data contrast"
+    ],
+    "signalClockLabel": [
+      "クロックの明暗差",
+      "Clock contrast"
+    ],
+    "signalState_unmeasured": [
+      "未測定",
+      "Not measured"
+    ],
+    "signalState_missing": [
+      "未検出",
+      "Not detected"
+    ],
+    "signalState_found": [
+      "検出",
+      "Detected"
+    ],
+    "signalState_sufficient": [
+      "差を検出",
+      "Contrast detected"
+    ],
+    "signalState_insufficient": [
+      "差が不足",
+      "Insufficient contrast"
+    ],
+    "receiveDisplayHelp": [
+      "進捗・明暗差の見方",
+      "Reading progress and contrast"
+    ],
+    "signalReadinessNote": [
+      "この判定は現在のフレームの明暗差です。時間順の信号を読めたことやCRC成功とは異なります。送信前の静止パネルでは差がないため、不足の表示は正常です。",
+      "These indicators describe contrast in the current frame, not successful temporal decoding or a passing CRC. " +
+      "The idle panel has no contrast between each pair, so Insufficient is normal before transmission."
     ],
     "guard": [
       "末尾のクロック",
@@ -1012,9 +1160,9 @@
       "rows": [
         [
           "共通の明度変動",
-          "データ・クロックを各反転領域と比較し、外枠と内枠で正規化",
+          "データ・クロックを各反転領域と比較し、固定した明暗の基準で正規化",
           "Common brightness changes",
-          "Compare each signal with its complement and normalize using the border and guard"
+          "Compare each signal with its complement and normalize using fixed brightness references"
         ],
         [
           "白飛び・ぼけ・強い傾き",
@@ -1046,11 +1194,11 @@
         "Rolling-shutter stripes"
       ],
       "text": [
-        "CMOSは行ごとに露光時刻がずれるため、高速な明滅が横縞になることがあります。本ツールは縞から高速データを読む方式ではありません。横並びの4領域を同じ高さの帯から測定し、クロックの" +
-        "各状態で複数フレームを確認します。",
-        "CMOS rows may expose at different times, making rapid flicker appear as stripes. This tool" +
-        " does not decode high-speed stripe patterns. It samples four side-by-side areas from a sha" +
-        "red horizontal band and requires multiple frames per clock state."
+        "CMOSは行ごとに露光時刻がずれるため、高速な明滅が横縞になることがあります。本ツールは縞を復号せず、パネルの中央帯に並ぶ4領域を測定します。パネルが回転すると撮像素子の同じ行には" +
+        "並ばないため、露光時刻の差が残ります。クロックの各状態で複数フレームを確認します。",
+        "CMOS rows may expose at different times, making rapid flicker appear as stripes. This tool does not decode those stripes. " +
+        "It samples four areas along the panel's central band. A rotated panel does not align them with the same sensor rows, " +
+        "so exposure-time differences remain. Each clock state requires multiple frames."
       ],
       "headers": [
         "取得方法 / 時間の単位",
@@ -1059,9 +1207,9 @@
       "rows": [
         [
           "本ツール",
-          "同じ高さの4領域を比較。1状態につき少なくとも2フレームが必要",
+          "パネルの中央帯の4領域を比較。1状態につき少なくとも2フレームが必要",
           "This tool",
-          "Compare four areas at the same height. At least two frames per state are required"
+          "Compare four areas in the panel's central band. At least two frames per state are required"
         ],
         [
           "縞の解析（対象外）",
