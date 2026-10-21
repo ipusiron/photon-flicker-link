@@ -151,6 +151,42 @@ def interface(p, urls, report):
             browser.close()
 
 
+def camera_adapter(p, url, report):
+    browser = p.chromium.launch(args=['--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream=device-count=2,fps=30'])
+    try:
+        page = browser.new_page()
+        errors = errors_for(page)
+        page.goto(url + '?lang=en')
+        page.evaluate('''async () => {
+          window.adapterFrames = 0;
+          window.adapterVideo = document.createElement('video');
+          window.adapter = PhotonCamera.create(adapterVideo, document.createElement('canvas'));
+          await adapter.start({onFrame() { window.adapterFrames++; }});
+          window.adapterDevices = await PhotonCamera.listCameras();
+          window.oldTrack = adapterVideo.srcObject.getVideoTracks()[0];
+        }''')
+        page.wait_for_function('() => window.adapterFrames >= 30')
+        assert page.evaluate('() => adapterDevices.length') == 2
+        page.evaluate('''async () => {
+          const next = adapterDevices.find(device => device.deviceId !== adapter.info.deviceId);
+          window.nextDevice = next.deviceId;
+          window.adapterFrames = 0;
+          await adapter.start({deviceId:next.deviceId,onFrame() { window.adapterFrames++; }});
+        }''')
+        page.wait_for_function('() => window.adapterFrames >= 30')
+        assert page.evaluate("() => oldTrack.readyState === 'ended' && adapter.info.deviceId === nextDevice")
+        info = page.evaluate('() => ({width:adapter.info.width,height:adapter.info.height,fps:adapter.info.fps})')
+        assert info['width'] == 640 and info['height'] == 480 and 25 < info['fps'] <= 31, info
+        assert page.evaluate("""() => { const track=adapterVideo.srcObject.getVideoTracks()[0]; adapter.stop();
+          return track.readyState === 'ended' && adapterVideo.srcObject === null; }""")
+        assert not errors, errors
+        report.append({'cameraAdapter': 'two devices; exact selection; old and final tracks released', **info})
+        print('camera adapter PASS', info, flush=True)
+    finally:
+        browser.close()
+
+
 def screen_transmission(p, url, report):
     for engine in [p.chromium, p.firefox]:
         browser = engine.launch()
@@ -343,6 +379,7 @@ def main():
         with sync_playwright() as p:
             interface(p, urls, report)
             print('UI PASS', len(report), flush=True)
+            camera_adapter(p, url, report)
             screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)

@@ -62,6 +62,81 @@ test('A permission result arriving after Stop has every track stopped', async ()
   assert.equal(stopped, 1);
   assert.equal(camera.active, false);
 });
+
+test('Camera inventory includes only video inputs and does not request permission', async () => {
+  const f = fixture();
+  f.host.navigator.mediaDevices.getUserMedia = () => { throw new Error('must not open'); };
+  f.host.navigator.mediaDevices.enumerateDevices = async () => [
+    { kind: 'audioinput', deviceId: 'mic', label: 'Microphone' },
+    { kind: 'videoinput', deviceId: 'front', label: 'Front camera' },
+    { kind: 'videoinput', deviceId: 'usb', label: '<USB camera>' }
+  ];
+  assert.deepEqual(await Camera.listCameras(f.host), [
+    { deviceId: 'front', label: 'Front camera' }, { deviceId: 'usb', label: '<USB camera>' }
+  ]);
+  delete f.host.navigator.mediaDevices.enumerateDevices;
+  await assert.rejects(Camera.listCameras(f.host), /deviceListUnavailable/);
+});
+
+function readyCameraFixture() {
+  const f = fixture();
+  Object.assign(f.video, { readyState: 2, videoWidth: 640, videoHeight: 480, currentTime: 0, play: async () => {} });
+  f.canvas.getContext().getImageData = () => ({ data: new Uint8ClampedArray([128, 128, 128, 255]) });
+  return f;
+}
+
+function mockStream(id) {
+  const track = Object.assign(new EventTarget(), { label: id + ' camera', stopped: false,
+    stop() { this.stopped = true; }, getSettings: () => ({ deviceId: id }) });
+  return { track, getTracks: () => [track], getVideoTracks: () => [track] };
+}
+
+test('Switching cameras releases the old track before requesting the exact new device', async () => {
+  const f = readyCameraFixture(), first = mockStream('front'), second = mockStream('usb'), calls = [];
+  f.host.navigator.mediaDevices.getUserMedia = async constraints => {
+    calls.push(constraints);
+    if (calls.length === 1) return first;
+    assert.equal(first.track.stopped, true);
+    return second;
+  };
+  const camera = Camera.create(f.video, f.canvas, f.host);
+  await camera.start({ onFrame() {} });
+  assert.deepEqual(calls[0].video.facingMode, { ideal: 'environment' });
+  const info = await camera.start({ deviceId: 'usb', onFrame() {} });
+  assert.deepEqual(calls[1].video.deviceId, { exact: 'usb' });
+  assert.equal(calls[1].audio, false);
+  assert.equal('facingMode' in calls[1].video, false);
+  assert.equal(info.deviceId, 'usb');
+  assert.equal(info.label, 'usb camera');
+  camera.stop();
+  assert.equal(second.track.stopped, true);
+  assert.equal(f.video.srcObject, null);
+});
+
+test('A delayed old camera cannot replace a newly selected camera', async () => {
+  const f = readyCameraFixture(), old = mockStream('front'), current = mockStream('usb');
+  let resolveOld;
+  f.host.navigator.mediaDevices.getUserMedia = ({ video }) => video.deviceId.exact === 'front' ?
+    new Promise(resolve => { resolveOld = resolve; }) : Promise.resolve(current);
+  const camera = Camera.create(f.video, f.canvas, f.host);
+  const pending = camera.start({ deviceId: 'front', onFrame() {} });
+  await camera.start({ deviceId: 'usb', onFrame() {} });
+  resolveOld(old);
+  await assert.rejects(pending, /cancelled/);
+  assert.equal(old.track.stopped, true);
+  assert.equal(current.track.stopped, false);
+  assert.equal(camera.info.deviceId, 'usb');
+  assert.equal(f.video.srcObject, current);
+  camera.stop();
+});
+
+test('Missing, busy, denied and unavailable selected cameras have distinct error codes', () => {
+  for (const [name, code] of [['NotAllowedError', 'permission'], ['NotFoundError', 'cameraNotFound'],
+    ['NotReadableError', 'cameraInUse'], ['OverconstrainedError', 'cameraSelectionUnavailable']]) {
+    assert.equal(Camera.errorCode({ name, message: 'browser detail' }), code);
+  }
+  assert.equal(Camera.errorCode(new Error('videoError')), 'videoError');
+});
 test('Transmission uses the exact core sequence, stops once and removes flashing on hide', () => {
   const f = fixture();
   const screen = Screen.create(f.canvas, f.host);

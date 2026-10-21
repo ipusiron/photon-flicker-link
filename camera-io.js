@@ -7,6 +7,19 @@
   const MAX_FILE_BYTES = 128 * 1024 * 1024;
   const MAX_VIDEO_SECONDS = 60;
 
+  async function listCameras(host = globalThis) {
+    if (!host.navigator.mediaDevices?.enumerateDevices) throw new Error('deviceListUnavailable');
+    const devices = await host.navigator.mediaDevices.enumerateDevices();
+    return devices.filter(device => device.kind === 'videoinput').map(device =>
+      ({ deviceId: device.deviceId, label: device.label }));
+  }
+
+  function errorCode(error) {
+    return ({ NotAllowedError: 'permission', SecurityError: 'permission', NotFoundError: 'cameraNotFound',
+      NotReadableError: 'cameraInUse', TrackStartError: 'cameraInUse', OverconstrainedError: 'cameraSelectionUnavailable' })
+      [error.name] || error.message;
+  }
+
   function region(value = {}) {
     const x = core.clamp(Number.isFinite(value.x) ? value.x : 0.3, 0, 0.9);
     const y = core.clamp(Number.isFinite(value.y) ? value.y : 0.3, 0, 0.9);
@@ -91,7 +104,7 @@
       const ticket = generation;
       active = true;
       onStop = options.onStop || (() => {});
-      stats = { fps: 0, width: 0, height: 0, exposure: 'unsupported', whiteBalance: 'unsupported' };
+      stats = { fps: 0, width: 0, height: 0, exposure: 'unsupported', whiteBalance: 'unsupported', deviceId: '', label: '' };
       rvfc = !!host.HTMLVideoElement && 'requestVideoFrameCallback' in host.HTMLVideoElement.prototype;
       stats.callback = rvfc ? 'rVFC' : 'rAF';
       lastFrameAt = host.performance.now();
@@ -106,12 +119,15 @@
         } else {
           if (!host.navigator.mediaDevices?.getUserMedia) throw new Error('cameraUnavailable');
           const opened = await host.navigator.mediaDevices.getUserMedia({ audio: false, video: {
-            facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }
+            ...(options.deviceId ? { deviceId: { exact: options.deviceId } } : { facingMode: { ideal: 'environment' } }),
+            width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }
           } });
           if (ticket !== generation) { opened.getTracks().forEach(track => track.stop()); throw new Error('cancelled'); }
           stream = opened;
           const track = stream.getVideoTracks()[0];
           if (!track) throw new Error('cameraUnavailable');
+          stats.label = track.label || '';
+          try { stats.deviceId = track.getSettings?.().deviceId || ''; } catch (_) { /* Optional device metadata. */ }
           listen(track, 'ended', () => stop('cameraEnded'));
           listen(track, 'mute', () => stop('cameraMuted'));
           stats = { ...stats, ...await lockControls(track,
@@ -177,5 +193,5 @@
     return { start, stop, setRegion(value) { crop = region(value); return crop; },
       get active() { return active; }, get info() { return { ...stats }; } };
   }
-  return Object.freeze({ create, region, lockControls, MAX_FILE_BYTES, MAX_VIDEO_SECONDS });
+  return Object.freeze({ create, region, lockControls, listCameras, errorCode, MAX_FILE_BYTES, MAX_VIDEO_SECONDS });
 }));
