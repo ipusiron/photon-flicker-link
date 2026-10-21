@@ -227,6 +227,18 @@
     return [0, 1, 2].map(c => mean(selected.map(s => s.rgb[c])));
   }
 
+  function observedGapRGB(samples, center, period, normalize, levels) {
+    // Only bridge an empty central window with two agreeing observations inside this symbol.
+    // Keep a 10% boundary guard; never copy a neighboring symbol across a fully missing one.
+    const before = samples.findLast(s => s.time < center);
+    const after = samples.find(s => s.time > center);
+    if (!before || !after || center - before.time > 0.4 * period || after.time - center > 0.4 * period) return null;
+    const a = normalize(before.rgb).map(v => classify(v, levels));
+    const b = normalize(after.rgb).map(v => classify(v, levels));
+    if (a.some((v, c) => v.confidence <= 0.65 || b[c].confidence <= 0.65 || v.value !== b[c].value)) return null;
+    return before.rgb.map((v, c) => (v + after.rgb[c]) / 2);
+  }
+
   // Fit known transition positions to timestamps. The receiver does not use the sender's rate setting.
   function findPreamble(samples, mode = 'mono') {
     if (samples.length < 25) return null;
@@ -336,7 +348,11 @@
         const slot = symbols.length + endValues.length;
         const center = dataStart + (slot + 0.5) * sync.period;
         if (time < center + 0.28 * sync.period) break;
-        const value = windowRGB(samples, center - 0.28 * sync.period, center + 0.28 * sync.period);
+        const ending = dataCount !== null && symbols.length >= dataCount;
+        const normalize = rgb => calibration && !ending ? multiply(calibration.inverse, rgb.map((v, c) => v - calibration.black[c])) :
+          Array(3).fill((signal(rgb, settings.mode) - sync.low) / (sync.high - sync.low));
+        const value = windowRGB(samples, center - 0.28 * sync.period, center + 0.28 * sync.period) ||
+          observedGapRGB(samples, center, sync.period, normalize, ending ? 2 : settings.levels);
         if (dataCount !== null && symbols.length >= dataCount) {
           const normalized = value ? (signal(value, settings.mode) - sync.low) / (sync.high - sync.low) : NaN;
           const decision = Number.isFinite(normalized) ? classify(normalized) : { value: null };

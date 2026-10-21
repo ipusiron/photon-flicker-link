@@ -251,6 +251,25 @@ canvas {
 .card canvas[id="graph"] {
   height: 240px;
 }
+.countdown {
+  min-height: 64px;
+  margin-block: 8px;
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 700;
+}
+.receive-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.receive-monitor, #region-panel {
+  min-width: 0;
+}
+#region-panel h3 {
+  margin-top: 0;
+}
 .uncertain {
   font-weight: 500;
   text-decoration: underline dotted;
@@ -361,4 +380,12 @@ dialog::backdrop {
   transition: none !important;
   scroll-behavior: auto !important;
 }
+}
+@media (min-width: 900px) {
+  .receive-workspace {
+    grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  }
+  #region-panel .region-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

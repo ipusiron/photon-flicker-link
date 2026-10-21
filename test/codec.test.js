@@ -38,6 +38,29 @@ test('A: CRC-8/SMBUS known answer, not only a round trip', () => {
   assert.equal(C.crc8([]), 0);
   assert.throws(() => C.crc8([256]));
 });
+
+test('A short central capture gap uses agreeing in-symbol observations, never missing or conflicting symbols', () => {
+  const cfg = C.config({ rate: 8 }), { samples, tx } = synthetic('LIGHT', { rate: 8 });
+  const center = 0.37 + (C.PREAMBLE.length + 25.5) * cfg.period;
+  const high = tx.frames[C.PREAMBLE.length + 25].rgb;
+  const low = tx.frames[C.PREAMBLE.length + 24].rgb;
+  assert.notDeepEqual(high, low);
+  for (const scenario of ['agree', 'conflict', 'missing']) {
+    const input = samples.filter(s => Math.abs(s.time - center) > 0.065);
+    if (scenario !== 'missing') input.push({ time: center - 0.043, rgb: high },
+      { time: center + 0.049, rgb: scenario === 'agree' ? high : low });
+    const decoder = C.createDecoder(cfg);
+    const events = input.sort((a, b) => a.time - b.time).flatMap(s => decoder.push(s.time, s.rgb));
+    const result = events.find(e => e.type === 'result');
+    if (scenario === 'agree') {
+      assert.equal(result?.text, 'LIGHT');
+      assert.equal(result?.valid, true);
+    } else {
+      assert.equal(result?.valid, false, scenario);
+      assert.ok(result?.uncertain.includes(25), scenario);
+    }
+  }
+});
 for (const mode of ['mono', 'color']) {
   for (const levels of [2, 4]) {
     test(`A: all 256 byte values round trip through ${mode} ${levels} levels`, () => {

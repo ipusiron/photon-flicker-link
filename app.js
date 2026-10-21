@@ -17,6 +17,7 @@
   let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region();
   let lessonLanguage = null, dragStart = null;
   let testingCamera = false, cameras = [], selectedCameraId = '', cameraCheck = null;
+  let countdownValue = null, quality = null, qualityTrace = [];
   let cameraListState = 'cameraListHint', cameraCheckState = 'cameraUnchecked', listGeneration = 0;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
@@ -68,7 +69,17 @@
       width: cameraCheck.width, height: cameraCheck.height, fps: cameraCheck.fps.toFixed(1) }) : '';
     $('status').textContent = t(status);
     $('error').textContent = error ? t(error) : '';
-    $('graph-legend').textContent = t(currentMode === 'color' ? 'colorLegend' : 'monoLegend');
+    $('graph-legend').textContent = t(currentMode + 'Legend');
+    $('tx-countdown').textContent = countdownValue === null ? '' : countdownValue ? ['①', '②', '③'][countdownValue - 1] : t('start');
+    $('preview-note').textContent = t(camera.active ? testingCamera ? 'testPreviewNote' : 'activePreviewNote' :
+      $('role').value === 'offline' ? 'offlinePreviewNote' : 'receivePreviewNote');
+    $('receive-status').textContent = t(status);
+    if (quality) {
+      $('signal-health').textContent = t('signalHealth', { white: (quality.white * 100).toFixed(0),
+        dark: (quality.dark * 100).toFixed(0), clipped: (quality.clipped * 100).toFixed(0), span: quality.span.toFixed(3) });
+      $('signal-advice').textContent = t(quality.white > 0.2 ? 'signalWhite' : quality.dark > 0.2 ? 'signalDark' :
+        quality.clipped > 0.2 ? 'signalClipped' : 'signalObserve');
+    }
     $('env-callback').textContent = environment?.callback ||
       ('requestVideoFrameCallback' in HTMLVideoElement.prototype ? 'rVFC' : 'rAF');
     if (environment) {
@@ -134,6 +145,7 @@
   }
   function clearResult() {
     result = null; sync = null; live = ''; trace = []; marks = []; txFrame = null; environment = null; lastDraw = -Infinity;
+    countdownValue = null; resetQuality();
     ['result-text', 'diagnostics', 'live', 'tx-progress', 'sample-value'].forEach(id => { $(id).textContent = ''; });
     ['crc', 'frame-check', 'confidence', 'agreement', 'env-fps', 'env-resolution', 'env-clock', 'env-exposure', 'env-wb']
       .forEach(id => { $(id).textContent = '—'; });
@@ -147,6 +159,7 @@
     camera.stop(); screen.stop();
     if (decoder) decoder.clear();
     decoder = null;
+    countdownValue = null;
     setBusy(false);
     status = reason;
     drawPreview();
@@ -177,7 +190,7 @@
       if (role === 'send') C.bytesOf($('text-input').value);
       if (role === 'offline') { file = $('video-input').files[0]; if (!file) throw new Error('selectFile'); }
     } catch (e) { error = e.message; render(); return; }
-    if (role === 'send' && (cfg.rate > 2 || cfg.contrast === 'high' || cfg.mode === 'color' || reduced.matches)) {
+    if (role === 'send' && (cfg.rate > 2 || cfg.contrast === 'high' || cfg.mode !== 'mono' || reduced.matches)) {
       $('warning-dialog').showModal();
       return;
     }
@@ -188,15 +201,17 @@
     clearResult(); error = ''; currentRole = role; currentMode = cfg.mode; expected = $('expected').value;
     const ticket = ++generation;
     setBusy(true);
-    status = role === 'send' ? 'sending' : 'receiving';
+    status = role === 'send' ? 'preparing' : 'receiving';
     render();
     try {
       if (role === 'send') {
-        screen.start($('text-input').value, cfg, frame => { txFrame = frame; render(); }, reason => {
+        screen.start($('text-input').value, cfg, frame => {
+          txFrame = frame; status = 'sending'; if (frame.index > 0) countdownValue = null; render();
+        }, reason => {
           if (ticket !== generation) return;
           if (reason === 'displayStalled') error = reason;
           stop(reason);
-        });
+        }, { countdown: 3, onCountdown(value) { countdownValue = value; render(); } });
       } else {
         decoder = C.createDecoder(cfg);
         $('video-input').value = '';
@@ -204,6 +219,7 @@
           if (ticket !== generation) return;
           if (role === 'receive') { cameraCheck = frame.stats; cameraCheckState = 'cameraReceiving'; }
           environment = frame.stats;
+          updateQuality(frame, cfg.mode);
           trace.push({ time: frame.time, rgb: frame.rgb });
           if (trace.length > 900) trace.shift();
           decoder.push(frame.time, frame.rgb).forEach(received);
@@ -254,13 +270,14 @@
   async function testCamera() {
     if (busy) return;
     const ticket = ++generation;
-    testingCamera = true; cameraCheck = null; cameraCheckState = 'cameraOpening'; error = '';
+    testingCamera = true; cameraCheck = null; cameraCheckState = 'cameraOpening'; error = ''; resetQuality();
     setBusy(true); status = 'cameraOpening'; render();
     let paintedAt = -Infinity;
     try {
       await camera.start({ deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
         if (ticket !== generation) return;
         cameraCheck = frame.stats; cameraCheckState = 'cameraTesting'; status = 'cameraTesting';
+        updateQuality(frame, $('mode').value);
         if (frame.time - paintedAt >= (reduced.matches ? 1 : 0.09)) {
           paintedAt = frame.time; drawPreview(); render();
         }
@@ -270,6 +287,16 @@
       if (ticket !== generation) return;
       error = PhotonCamera.errorCode(e); stop('failed'); cameraCheckState = 'cameraTestFailed'; render();
     }
+  }
+  function resetQuality() {
+    quality = null; qualityTrace = [];
+    $('signal-health').textContent = ''; $('signal-advice').textContent = '';
+  }
+  function updateQuality(frame, mode) {
+    qualityTrace.push({ time: frame.time, value: C.signal(frame.rgb, mode) });
+    qualityTrace = qualityTrace.filter(sample => frame.time - sample.time <= 2);
+    const values = qualityTrace.map(sample => sample.value);
+    quality = { ...frame.health, span: Math.max(...values) - Math.min(...values) };
   }
   // The marked preview is separate from the unmarked sampling canvas.
   function drawPreview() {
@@ -323,7 +350,7 @@
       ctx.strokeStyle = color(colors[c]); ctx.lineWidth = 2; ctx.setLineDash([[], [10, 5], [2, 4]][c]);
       ctx.beginPath(); let first = true;
       trace.filter(s => s.time >= start).forEach(s => {
-        const value = currentMode === 'color' ? corrected(s.rgb)[c] : C.luminance(s.rgb);
+        const value = currentMode === 'color' ? corrected(s.rgb)[c] : C.signal(s.rgb, currentMode);
         if (first) ctx.moveTo(x(s.time), y(value)); else ctx.lineTo(x(s.time), y(value));
         first = false;
       });
@@ -339,11 +366,13 @@
     }
     ctx.restore();
     if (trace.length) {
-      const values = currentMode === 'color' ? corrected(trace.at(-1).rgb) : [C.luminance(trace.at(-1).rgb)];
-      $('sample-value').textContent = (currentMode === 'color' ? 'RGB: ' : 'Y: ') + values.map(v => v.toFixed(3)).join(' / ');
+      const values = currentMode === 'color' ? corrected(trace.at(-1).rgb) : [C.signal(trace.at(-1).rgb, currentMode)];
+      const label = currentMode === 'color' ? 'RGB: ' : currentMode === 'bicolor' ? 'R/(R+B): ' : 'Y: ';
+      $('sample-value').textContent = label + values.map(v => v.toFixed(3)).join(' / ');
     }
   }
   function updateRegion() {
+    resetQuality();
     selectedRegion = camera.setRegion(Object.fromEntries(['x', 'y', 'w', 'h'].map(key => [key, Number($('roi-' + key).value) / 100])));
     $('region-value').textContent = Object.entries(selectedRegion).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(' · ');
     if (busy && currentRole !== 'send' && !testingCamera) {
