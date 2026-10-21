@@ -27,9 +27,9 @@ test('README: both throughput tables and UTF-8 examples agree with the codec', (
   assert.equal(C.config().levels, 2);
   assert.equal(C.MAX_BYTES, 8);
   for (const [i, text] of docs.entries()) {
-    const rows = [...text.matchAll(/^\| (mono|color) \| ([248]) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \|$/gm)];
-    assert.equal(rows.length, 6);
-    assert.equal(new Set(rows.map(r => r[1] + r[2])).size, 6);
+    const rows = [...text.matchAll(/^\| (mono|color|bicolor) \| ([248]) \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \|$/gm)];
+    assert.equal(rows.length, 9);
+    assert.equal(new Set(rows.map(r => r[1] + r[2])).size, 9);
     for (const [, mode, rate, raw, duration, net] of rows) {
       const cfg = C.config({ mode, rate: Number(rate) });
       assert.equal(Number(raw), cfg.bits * cfg.rate);

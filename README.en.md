@@ -8,8 +8,8 @@ title: "Photon Flicker Link"
 subtitle_ja: "光で短文を送り、カメラとグラフで通信を観察"
 subtitle_en: "Send short text through light and observe the camera signal"
 
-description_ja: "画面の明滅をカメラで読み取り、最大8バイトの文字列へ復元する教材。モノクロ・RGB並列変調、時系列グラフ、ライブ復号、ローカル動画の解析に対応します。"
-description_en: "A local optical communication lesson with binary monochrome and RGB signaling, camera traces, live decoding, CRC-8 and offline video analysis, for up to 8 UTF-8 bytes."
+description_ja: "画面の明滅をカメラで読み取り、最大8バイトの文字列へ復元する教材。モノクロ・青赤2色・RGB並列変調、時系列グラフ、ライブ復号、ローカル動画の解析に対応します。"
+description_en: "A local optical communication lesson with binary monochrome, blue/red and parallel RGB signaling, camera traces, live decoding, CRC-8 and offline video analysis, for up to 8 UTF-8 bytes."
 
 category_ja:
   - プライバシー
@@ -76,19 +76,21 @@ No installation is required. Defaults are binary monochrome, 2 symbol/s, low con
 
 Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider people nearby and stop if you feel unwell. Low speed and low contrast do not guarantee safety. The author does not encourage misuse.
 
-1. Open the demo on two devices and select Monochrome on both. Lower screen brightness and avoid reflections.
+1. Open the demo on two devices and select Monochrome on both. Adjust brightness while watching the receiver and avoid reflections.
 2. Choose Receive only on the receiver, press Test camera, and allow camera access. Check the camera name, resolution, sampled fps and video. Enable Show video preview if it is off.
 3. If there are multiple cameras, choose one under Camera to use. You can switch during testing. Use Refresh list if a connected camera is missing.
 4. Press Start reception on the receiver. Keep the devices still, with the measurement rectangle entirely inside the sender's signal area.
-5. Choose Send only on the sender and start with `A`. It takes 23 seconds at the defaults. Start reception first and finish transmission within the 60-second reception limit.
+5. Choose Send only on the sender and start with `A`. After ③ → ② → ① → Start, transmission begins. The defaults take 3 seconds of preparation plus 23 seconds of transmission. Start reception first and finish transmission within the 60-second reception limit.
 6. Watch the live characters and trace. Check CRC, end marker and UTF-8 at the end. Treat text from failed checks as unverified.
 7. Use Stop to interrupt, or Clear display to remove the result and measurements.
+
+Selecting Receive only does not start the camera or signal display. Press Start reception and grant permission to begin video, the trace and live decoding. Turning Show video preview off hides only the preview. On wide screens, rectangle controls sit to the right of the video; on narrow screens, they follow the video, live text and trace.
 
 Camera testing checks frame capture without decoding. Stop test, hiding the tab, or the 60-second limit releases the camera. Start reception during testing uses the same camera and starts a new reception time limit. Switching cameras during reception releases the old camera and restarts synchronization and decoding. Camera names and the selected device are not saved.
 
 Camera lists and names may be incomplete before permission is granted. An empty list alone does not prove that no camera is connected. Testing distinguishes permission denial, no camera, a camera that cannot be opened, and an unavailable selected device. Successful frame capture does not guarantee optical communication.
 
-For color, select Color on both devices and receive the calibration at the beginning. Faster rates, color, high contrast, and transmission with reduced motion enabled require a confirmation dialog. There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
+For color, select Color on both devices and receive the calibration at the beginning. Faster rates, color, two-color, high contrast, and transmission with reduced motion enabled require a confirmation dialog. There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
 
 To inspect a recording on one device, choose Offline decoding and select a video of this tool's transmission. The file must be browser-playable, such as MP4 or WebM, no larger than 128 MiB and no longer than 60 seconds. Character agreement and error rate appear only when you supply the expected text. This is not a general video-to-text extractor. The tool has no recording function.
 
@@ -99,9 +101,10 @@ To inspect a recording on one device, choose Offline decoding and select a video
 | Roles | Send only, Receive only, Offline decoding |
 | Cameras | List and refresh, device selection, video/resolution/fps test; switching releases the previous camera |
 | Monochrome | Two brightness levels carrying 1 bit/symbol |
+| Two colors | Blue = 0, red = 1; 1 bit/symbol, classified using linearized R/(R+B) |
 | Color | Two levels per RGB channel, totaling 3 bits/symbol; baseline and RGB calibration |
 | Measurement rectangle | Drag or use four sliders; changes restart synchronization |
-| Trace | Linearized brightness or calibrated RGB; thresholds and decision positions; distinct line styles |
+| Trace | Linearized brightness, red/blue ratio or calibrated RGB; thresholds and decision positions; distinct line styles |
 | Confidence | Classification margin, not a probability of correctness |
 | `?` | A character containing low-confidence or missing symbols |
 | CRC-8 | Checks transmission errors; no encryption, sender authentication or error correction |
@@ -110,19 +113,32 @@ To inspect a recording on one device, choose Offline decoding and select a video
 
 Exposure requests apply manual mode before exposure time; white balance (WB) is requested separately. Analysis continues if controls are unsupported or rejected, with the state shown on screen. Preamble amplitude normalization handles some brightness changes but cannot remove every effect of automatic camera adjustment.
 
+### When reception is unstable
+
+Monochrome measures a brightness difference, so dimming the sender too far reduces that difference. At the other extreme, a white, clipped signal area loses brightness and color information. Alongside the rectangle controls, the tool shows the proportions of near-white pixels, near-black pixels and pixels with any channel near maximum, plus signal range over the last two seconds. Adjust gradually while watching the receiver. These measurements guide adjustment; they do not confirm communication.
+
+If brightness decisions are unstable, select Two colors (blue / red) on both devices. The R/(R+B) ratio cancels a gain applied equally to red and blue. The preamble estimates the two ratio levels and timing. This is a different decoder from monochrome with colored output. Clipping, dark-image noise, changing background light and automatic color adjustments can still cause failure. CRC requirements remain unchanged. Two-color mode has the same rate as monochrome.
+
+On iPhone, the brightness control changes the entire screen. True Tone, Night Shift and auto-brightness can also alter the display. For comparison experiments, record these settings and consider temporarily disabling them to hold conditions steady. See [Apple's instructions](https://support.apple.com/en-us/109351). The tool does not lock device screen brightness. Manual camera exposure and WB are requested only when the browser reports support.
+
+The reported iPhone reception failure remains unexplained because no device-to-device frames or measurements have been collected. iPhone hardware, Vivaldi, multiple physical cameras, distance, ambient light and actual exposure/WB locking remain awaiting owner testing (本人確認待ち).
+
 ## 🔬 Transfer limits and data density
 
 Camera frame rate limits transfer speed. Multiple frames are needed per symbol, and this tool rejects synchronization below 2 frames/symbol. At 30 fps, at most 15 symbol/s is a necessary condition, not a sufficient one. Exposure time, missing frames, display phase, distance, ambient light and automatic exposure/WB can impose stricter limits.
 
-Reading whole-screen flicker as one temporal channel with a camera gives a design range of a few to tens of bits per second in monochrome. This implementation offers 2/4/8 symbol/s: 2–8 bit/s raw in monochrome and 6–24 bit/s in color. These are not limits on fast photodiodes or methods that decode rolling-shutter stripes.
+Reading whole-screen flicker as one temporal channel with a camera gives a design range of a few to tens of bits per second in monochrome. This implementation offers 2/4/8 symbol/s: 2–8 bit/s raw in monochrome or two-color mode and 6–24 bit/s in color. These are not limits on fast photodiodes or methods that decode rolling-shutter stripes.
 
-The following values are calculated for the maximum 8-byte payload. `mono` means monochrome; `color` means parallel RGB. Payload throughput is 64 bits divided by total duration, including preamble, length, CRC, end marker and color calibration. These are not physical measurements.
+The following values are calculated for the maximum 8-byte payload. `mono` means monochrome; `bicolor` means blue/red; `color` means parallel RGB. Payload throughput is 64 bits divided by total duration, including preamble, length, CRC, end marker and color calibration. These are not physical measurements. The three-second countdown is excluded from this table.
 
 | Mode | symbol/s | Raw rate (bit/s) | Duration for 8 bytes (s) | Payload throughput (bit/s) |
 |---|---:|---:|---:|---:|
 | mono | 2 | 2 | 51 | 1.25 |
 | mono | 4 | 4 | 25.5 | 2.51 |
 | mono | 8 | 8 | 12.75 | 5.02 |
+| bicolor | 2 | 2 | 51 | 1.25 |
+| bicolor | 4 | 4 | 25.5 | 2.51 |
+| bicolor | 8 | 8 | 12.75 | 5.02 |
 | color | 2 | 6 | 28.5 | 2.25 |
 | color | 4 | 12 | 14.25 | 4.49 |
 | color | 8 | 24 | 7.125 | 8.98 |
@@ -153,7 +169,7 @@ Line of sight (LOS) and suitable optics can allow distant observation. LED-it-GO
 
 Ways of using this tool in particular
 
-- In an information-science class, compare `A` (1 byte, 23 s), `LIGHT` (5 bytes, 39 s), and `日本` (6 bytes, 43 s) to explore how UTF-8 byte count differs from character count. These are calculated monochrome durations at 2 symbol/s.
+- In an information-science class, compare `A` (1 byte, 23 s), `LIGHT` (5 bytes, 39 s), and `日本` (6 bytes, 43 s) to explore how UTF-8 byte count differs from character count. These are calculated monochrome durations at 2 symbol/s, excluding the three-second countdown.
 - In a communication-design lesson, compare 51 seconds for 8 monochrome bytes with 28.5 seconds in color to separate parallel-channel gains from calibration costs. Physical success also depends on color separation and ambient light.
 - A video-production practitioner can move the measurement region within the emitter or include some background, then observe thresholds and confidence. Camera RGB values are relative; this is not a lux meter or colorimeter.
 - A puzzle designer can send `LIGHT` and show its reconstruction. A receiver that knows the format can recover it, so this does not protect a secret password.
