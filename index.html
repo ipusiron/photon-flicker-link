@@ -8,8 +8,163 @@
   <meta name="referrer" content="no-referrer">
   <title>Photon Flicker Link</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script src="codec-core.js" defer></script>
+  <script src="camera-io.js" defer></script>
+  <script src="screen-tx.js" defer></script>
+  <script src="messages.js" defer></script>
+  <script src="app.js" defer></script>
 </head>
 <body>
-  <main><h1>Photon Flicker Link</h1><p>Day122</p></main>
+  <header class="page-header">
+    <div class="title-row">
+      <h1>Photon Flicker Link</h1>
+      <div class="header-tools">
+        <button id="theme" class="icon-button" type="button" data-label="theme"><span aria-hidden="true">◐</span></button>
+        <button id="language" class="icon-button" type="button" data-label="language"><span aria-hidden="true">A</span></button>
+        <button id="help" class="icon-button" type="button" data-label="help" aria-haspopup="dialog">?</button>
+      </div>
+    </div>
+    <p data-i18n="subtitle"></p>
+    <p class="eyebrow">DAY122 · LIGHT / DATA / VISIBILITY</p>
+  </header>
+  <noscript><p lang="ja">JavaScriptを有効にしてください。</p><p lang="en">Enable JavaScript to use this tool.</p></noscript>
+  <main>
+    <section class="card" aria-labelledby="before-title">
+      <h2 id="before-title"><span class="number">01</span> <span data-i18n="before"></span></h2>
+      <p class="warning" data-i18n="pse"></p>
+      <p data-i18n="setup"></p>
+      <p class="muted" data-i18n="privacy"></p>
+      <p class="muted" data-i18n="ethics"></p>
+      <div class="settings-grid">
+        <div class="field"><label for="mode" data-i18n="mode"></label>
+          <select id="mode"><option value="mono" data-i18n="mono"></option><option value="color" data-i18n="color"></option></select>
+        </div>
+        <div class="field"><label for="rate" data-i18n="rate"></label>
+          <select id="rate"><option value="2">2 symbol/s</option><option value="4">4 symbol/s</option><option value="8">8 symbol/s</option></select>
+        </div>
+        <div class="field"><label for="contrast" data-i18n="contrast"></label>
+          <select id="contrast"><option value="low" data-i18n="low"></option><option value="high" data-i18n="high"></option></select>
+        </div>
+      </div>
+      <p class="muted" data-i18n="settingsNote"></p>
+    </section>
+    <section class="card" aria-labelledby="environment-title">
+      <h2 id="environment-title"><span class="number">02</span> <span data-i18n="environment"></span></h2>
+      <dl class="environment">
+        <div><dt data-i18n="fps"></dt><dd id="env-fps">—</dd></div>
+        <div><dt data-i18n="callback"></dt><dd id="env-callback">—</dd></div>
+        <div><dt data-i18n="exposure"></dt><dd id="env-exposure">—</dd></div>
+        <div><dt data-i18n="whiteBalance"></dt><dd id="env-wb">—</dd></div>
+        <div><dt data-i18n="resolution"></dt><dd id="env-resolution">—</dd></div>
+        <div><dt data-i18n="clock"></dt><dd id="env-clock">—</dd></div>
+      </dl>
+      <p class="muted" data-i18n="environmentNote"></p>
+    </section>
+    <section class="card" aria-labelledby="role-title">
+      <h2 id="role-title"><span class="number">03</span> <span data-i18n="role"></span></h2>
+      <label for="role" data-i18n="role"></label>
+      <select id="role">
+        <option value="send" data-i18n="send"></option>
+        <option value="receive" data-i18n="receive"></option>
+        <option value="offline" data-i18n="offline"></option>
+      </select>
+      <p id="role-note" class="muted"></p>
+      <div id="send-fields" class="field">
+        <label for="text-input" data-i18n="textInput"></label>
+        <textarea id="text-input" rows="2" autocomplete="off" spellcheck="false" autocapitalize="off">LIGHT</textarea>
+        <p id="byte-count" class="mono"></p>
+        <p id="duration" class="mono"></p>
+      </div>
+      <div id="file-fields" hidden>
+        <div class="field"><label for="video-input" data-i18n="videoInput"></label>
+          <input id="video-input" type="file" accept="video/*,.webm,.mp4,.mov">
+        </div>
+        <p class="muted" data-i18n="fileNote"></p>
+        <div class="field"><label for="expected" data-i18n="expected"></label>
+          <input id="expected" type="text" maxlength="32" autocomplete="off">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="start" class="primary" type="button" data-i18n="start"></button>
+        <button id="stop" type="button" data-i18n="stop" disabled></button>
+        <button id="clear" type="button" data-i18n="clear"></button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p id="error" class="warning" role="alert"></p>
+    </section>
+    <section id="transmitter" class="card" aria-labelledby="tx-title">
+      <h2 id="tx-title"><span class="number">04</span> <span data-i18n="transmitter"></span></h2>
+      <canvas id="tx" width="640" height="300" role="img" data-label="txLabel"></canvas>
+      <p id="tx-progress" class="mono" aria-live="off"></p>
+      <p class="muted" data-i18n="txNote"></p>
+    </section>
+    <section id="receiver" class="card" aria-labelledby="rx-title" hidden>
+      <h2 id="rx-title"><span class="number">04</span> <span data-i18n="receiver"></span></h2>
+      <video id="source" muted playsinline hidden></video>
+      <canvas id="sample" width="640" height="480" hidden></canvas>
+      <canvas id="preview" width="640" height="480" role="img" data-label="previewLabel"></canvas>
+      <label class="choice"><input id="preview-enabled" type="checkbox" checked><span data-i18n="previewEnabled"></span></label>
+      <p class="muted" data-i18n="regionNote"></p>
+      <div class="region-controls">
+        <div class="field"><label for="roi-x" data-i18n="roiX"></label><input id="roi-x" type="range" min="0" max="90" value="30"></div>
+        <div class="field"><label for="roi-y" data-i18n="roiY"></label><input id="roi-y" type="range" min="0" max="90" value="30"></div>
+        <div class="field"><label for="roi-w" data-i18n="roiW"></label><input id="roi-w" type="range" min="10" max="100" value="40"></div>
+        <div class="field"><label for="roi-h" data-i18n="roiH"></label><input id="roi-h" type="range" min="10" max="100" value="40"></div>
+      </div>
+      <p id="region-value" class="mono"></p>
+      <button id="region-reset" type="button" data-i18n="regionReset"></button>
+      <h3 data-i18n="graphTitle"></h3>
+      <canvas id="graph" width="960" height="300" role="img" data-label="graphLabel"></canvas>
+      <p id="graph-legend" class="mono"></p>
+      <p id="sample-value" class="mono"></p>
+      <p class="muted" data-i18n="graphNote"></p>
+      <h3 data-i18n="liveTitle"></h3>
+      <output id="live" class="live-text" aria-live="polite"></output>
+    </section>
+    <section id="results" class="card" aria-labelledby="result-title">
+      <h2 id="result-title"><span class="number">05</span> <span data-i18n="results"></span></h2>
+      <output id="result-text" class="live-text"></output>
+      <dl class="result-grid">
+        <div><dt>CRC-8</dt><dd id="crc">—</dd></div>
+        <div><dt data-i18n="frameCheck"></dt><dd id="frame-check">—</dd></div>
+        <div><dt data-i18n="confidence"></dt><dd id="confidence">—</dd></div>
+        <div id="agreement-field" hidden><dt data-i18n="agreement"></dt><dd id="agreement">—</dd></div>
+      </dl>
+      <p class="muted" data-i18n="resultNote"></p>
+      <details><summary data-i18n="diagnostics"></summary><pre id="diagnostics"></pre></details>
+      <h3 data-i18n="tradeoff"></h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th data-i18n="mode"></th><th data-i18n="density"></th><th data-i18n="conditions"></th></tr></thead>
+        <tbody>
+          <tr><th data-i18n="mono"></th><td>1 bit/symbol</td><td data-i18n="monoTradeoff"></td></tr>
+          <tr><th data-i18n="color"></th><td>3 bit/symbol</td><td data-i18n="colorTradeoff"></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section id="lessons" class="card" aria-labelledby="lesson-title">
+      <h2 id="lesson-title"><span class="number">06</span> <span data-i18n="lessons"></span></h2>
+      <div id="lesson-content"></div>
+    </section>
+  </main>
+  <footer>
+    <a href="https://github.com/ipusiron/photon-flicker-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="https://ipusiron.github.io/airborne-tone-link/" target="_blank" rel="noopener noreferrer">Day120 · Airborne Tone Link</a>
+    <a href="https://ipusiron.github.io/mic-gain-logger/" target="_blank" rel="noopener noreferrer">Day041 · Mic Gain Logger</a>
+    <span>MIT © 2026 IPUSIRON</span>
+  </footer>
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <h2 id="help-title" data-i18n="helpTitle"></h2>
+    <p data-i18n="helpBody"></p><p data-i18n="helpFailure"></p><p data-i18n="privacy"></p>
+    <button id="help-close" type="button" data-i18n="close"></button>
+  </dialog>
+  <dialog id="warning-dialog" aria-labelledby="warning-title">
+    <h2 id="warning-title" data-i18n="pseTitle"></h2>
+    <p data-i18n="pse"></p><p data-i18n="confirmNote"></p>
+    <div class="actions">
+      <button id="warning-cancel" type="button" data-i18n="cancel" autofocus></button>
+      <button id="warning-accept" type="button" data-i18n="continue"></button>
+    </div>
+  </dialog>
 </body>
 </html>
