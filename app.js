@@ -55,7 +55,9 @@
     document.documentElement.dataset.theme = theme;
     document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-label]').forEach(el => {
-      el.setAttribute('aria-label', t(el.dataset.label)); el.title = t(el.dataset.label);
+      el.setAttribute('aria-label', t(el.dataset.label));
+      if (el.id === 'tx') el.removeAttribute('title');
+      else el.title = t(el.dataset.label);
     });
     $('language').firstElementChild.textContent = language === 'ja' ? 'A' : '文';
     $('role-note').textContent = t($('role').value + 'Note');

@@ -81,7 +81,7 @@ Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider
 1. Open the demo on two devices and reload both. Use the version with thick L-shaped marks at all four corners. Adjust brightness while watching the receiver and avoid reflections.
 2. Choose Receive only on the receiver, press Test camera, and allow camera access. Check the camera name, resolution, sampled fps and video. Enable Show video preview if it is off.
 3. If there are multiple cameras, choose one under Camera to use. You can switch during testing. Use Refresh list if a connected camera is missing.
-4. Press Start reception. Fit the whole sending panel, including all four L-shaped corners and the top marks, inside the search area. Check that the detected quadrilateral follows the panel and keep the devices still.
+4. During the camera test, fit the whole sending panel, including all four L-shaped corners and the top marks, inside the search area. Check that the detected quadrilateral follows the panel, keep the devices still, then press Start reception.
 5. Choose Send only and start with `A`. Transmission begins after ③ → ② → ① → Start. Defaults take 3 seconds of preparation plus 41 seconds of transmission. Start reception first.
 6. Watch the data and clock traces and text appearing by block. Check CRC and UTF-8 at the end. Treat text from failed checks as unverified.
 7. Use Stop to interrupt, or Clear display to remove the result and measurements.
@@ -177,6 +177,7 @@ Static marks establish the order of the four bars and compensate for rotation, m
 Missing marks, uncertain orientation, steep angles, very small images and multiple candidates are rejected.
 Excessive dimming, clipping, reflections and movement can also cause failure.
 Watch the image, panel detection and data/clock differences while adjusting; lowering brightness indefinitely is not a remedy.
+The sending panel hides the pointer and does not display an explanatory tooltip over the signal. Keep notifications and other windows from covering its marks or bars.
 
 On iPhone, True Tone, Night Shift and auto-brightness alter display conditions.
 For comparison experiments, record the settings and consider temporarily disabling them to hold conditions steady.
@@ -184,13 +185,15 @@ See [Apple's instructions](https://support.apple.com/en-us/109351).
 The tool does not lock screen brightness or change camera exposure/WB to manual at reception startup.
 
 The owner reported that V2 reached Decoding but failed in monochrome and blue/red when sending from iPhone to PC/Vivaldi.
-The owner also reported no decoded text or automatic panel detection in V3, in both directions between iPhone and PC browsers.
-Without physical sample traces, the cause remains unidentified. Resolution by this corner-marker update is awaiting owner testing (本人確認待ち).
-Automated success does not establish that this reported problem is resolved.
+The first V3 release also failed in both directions. With the corner-marker version, the owner reported receiving the `LIGH` prefix with a passing block CRC on iPhone, sent from a PC at 2 symbol/s with Low contrast.
+In that attempt, the sender was restarted several times while reception continued. The receiver reached its 240-second deadline at 62/64 bit positions and 1/2 checked blocks. Full-message success remains unconfirmed.
+Exact start times and the physical diagnostic JSON are unavailable, so the cause leading to the deadline is not established. Automated success does not establish full-message success on hardware.
 
 Above the graph, remaining time, sample count and stop reason are shown.
 Measurement stops on success or after 240 seconds and keeps the last graph.
 After stopping, press Restart reception before sending again. Resynchronization does not extend the deadline.
+The 240 seconds include waiting before transmission; restarting only the sender does not renew that deadline.
+Adjust the setup in Test camera before starting reception. After a long adjustment, stop and restart reception before the next transmission.
 
 Save reception diagnostic below the graph exports sample times, data/clock measurements and decoder events as local JSON.
 It excludes images, audio, camera names, device IDs and video filenames.
@@ -291,7 +294,8 @@ GitHub Actions runs syntax checks and the same tests on push and pull_request.
 With an existing Python Playwright and FFmpeg installation, `python -X utf8 test/browser.py` checks HTTP/file UI, virtual cameras, video decoding, rAF, hidden-tab stops and denied permission. Add `--screenshots` to capture README images, or `--url https://ipusiron.github.io/photon-flicker-link/` to check the public page.
 
 The [verification record](docs/verification.md) separates measurements by protocol and lists outstanding checks.
-**V3 physical two-device communication, distance, ambient light, device variation and effective exposure/WB behavior await owner testing (本人確認待ち).**
+The owner has reported receiving the checked `LIGH` prefix from a PC on an iPhone.
+**V3 full-message reception on hardware, distance, ambient light, device variation and effective exposure/WB behavior await owner testing (本人確認待ち).**
 The reported V2 iPhone-to-PC/Vivaldi failure has not yet been confirmed resolved on hardware.
 
 ## 📁 Directory structure
@@ -353,7 +357,7 @@ A browser with JavaScript and Canvas is required. The sending, lesson and offlin
 The tool uses video-frame timestamps with rVFC when available, otherwise rAF sampling.
 If live mediaTime stops advancing while presented frames increase, it uses capture or presentation time anchored on the same frame.
 rAF timestamps and fps are estimates and do not guarantee rVFC precision.
-Camera, codec and exposure/WB support depend on the device. Physical Safari testing has not been performed.
+Camera, codec and exposure/WB support depend on the device. The owner has reported block reception on iPhone, but full-message reception and comparisons with documented OS/browser versions remain unconfirmed.
 
 ## 📄 License
 
