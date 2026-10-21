@@ -77,10 +77,16 @@ No installation is required. Defaults are binary monochrome, 2 symbol/s, low con
 Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider people nearby and stop if you feel unwell. Low speed and low contrast do not guarantee safety. The author does not encourage misuse.
 
 1. Open the demo on two devices and select Monochrome on both. Lower screen brightness and avoid reflections.
-2. Choose Receive only on the receiver, start it, and allow camera access. Keep the devices still, with the measurement rectangle entirely inside the sender's signal area.
-3. Choose Send only on the sender and start with `A`. It takes 23 seconds at the defaults. Start reception first and finish transmission within the 60-second reception limit.
-4. Watch the live characters and trace. Check CRC, end marker and UTF-8 at the end. Treat text from failed checks as unverified.
-5. Use Stop to interrupt, or Clear display to remove the result and measurements.
+2. Choose Receive only on the receiver, press Test camera, and allow camera access. Check the camera name, resolution, sampled fps and video. Enable Show video preview if it is off.
+3. If there are multiple cameras, choose one under Camera to use. You can switch during testing. Use Refresh list if a connected camera is missing.
+4. Press Start reception on the receiver. Keep the devices still, with the measurement rectangle entirely inside the sender's signal area.
+5. Choose Send only on the sender and start with `A`. It takes 23 seconds at the defaults. Start reception first and finish transmission within the 60-second reception limit.
+6. Watch the live characters and trace. Check CRC, end marker and UTF-8 at the end. Treat text from failed checks as unverified.
+7. Use Stop to interrupt, or Clear display to remove the result and measurements.
+
+Camera testing checks frame capture without decoding. Stop test, hiding the tab, or the 60-second limit releases the camera. Start reception during testing uses the same camera and starts a new reception time limit. Switching cameras during reception releases the old camera and restarts synchronization and decoding. Camera names and the selected device are not saved.
+
+Camera lists and names may be incomplete before permission is granted. An empty list alone does not prove that no camera is connected. Testing distinguishes permission denial, no camera, a camera that cannot be opened, and an unavailable selected device. Successful frame capture does not guarantee optical communication.
 
 For color, select Color on both devices and receive the calibration at the beginning. Faster rates, color, high contrast, and transmission with reduced motion enabled require a confirmation dialog. There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
 
@@ -91,6 +97,7 @@ To inspect a recording on one device, choose Offline decoding and select a video
 | Item | Behavior |
 |---|---|
 | Roles | Send only, Receive only, Offline decoding |
+| Cameras | List and refresh, device selection, video/resolution/fps test; switching releases the previous camera |
 | Monochrome | Two brightness levels carrying 1 bit/symbol |
 | Color | Two levels per RGB channel, totaling 3 bits/symbol; baseline and RGB calibration |
 | Measurement rectangle | Drag or use four sliders; changes restart synchronization |

@@ -380,6 +380,20 @@ def transmission(p, url, report, capture):
                 '--use-file-for-fake-video-capture=' + str(OUT / f'{mode}-2.y4m')]
             browser = p.chromium.launch(args=args)
             context = browser.new_context(viewport={'width': 1280, 'height': 1000})
+            if capture and role == 'receive':
+                # Name the synthetic fixture explicitly instead of publishing its local file path.
+                context.add_init_script('''const list = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+                  navigator.mediaDevices.enumerateDevices = async () => (await list()).map(device => ({
+                    kind:device.kind,deviceId:device.deviceId,groupId:device.groupId,
+                    label:device.kind === 'videoinput' ? 'Synthetic video camera' : device.label}));
+                  const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+                  navigator.mediaDevices.getUserMedia = async constraints => {
+                    const stream = await open(constraints);
+                    for (const track of stream.getVideoTracks()) {
+                      Object.defineProperty(track,'label',{value:'Synthetic video camera'});
+                    }
+                    return stream;
+                  };''')
             page = context.new_page()
             errors = errors_for(page)
             page.goto(url + '?lang=en')
@@ -391,6 +405,7 @@ def transmission(p, url, report, capture):
             page.click('#start')
             page.wait_for_function("() => document.querySelector('#live').textContent.length >= 2", timeout=25000)
             if capture and role == 'receive' and mode == 'mono':
+                assert 'Synthetic video camera' in page.locator('#camera-details').inner_text()
                 screenshot(page, 'receive', 'en', '#receiver')
                 page.click('#language')
                 screenshot(page, 'receive', 'ja', '#receiver')
