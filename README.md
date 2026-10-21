@@ -238,7 +238,7 @@ photon-flicker-link/          # プロジェクト
 
 JavaScriptとCanvasを使うブラウザーが必要です。送信・座学・オフライン復号のUIは`index.html`を直接開いても動作します。カメラはHTTPSまたはlocalhostで利用し、ブラウザーの許可が必要です。ローカルHTTPは`python -m http.server 8000 --bind 127.0.0.1`で起動できます。
 
-rVFCがあれば動画フレームの時刻を使い、なければrAFで採取します。rAFの時刻とfpsは近似値で、rVFCと同じ精度を保証しません。カメラ・コーデック・露出/WBの対応状況は端末ごとに異なります。ChromiumとFirefoxでUIを検証し、動画・仮想カメラの通し検証はChromiumで実施しています。Safari実機は未検証です。
+rVFCがあれば動画フレームの時刻を使い、なければrAFで採取します。rAFの時刻とfpsは近似値で、rVFCと同じ精度を保証しません。カメラ・コーデック・露出/WBの対応状況は端末ごとに異なります。ChromiumとFirefoxでUIと送信開始から自動終了までの全発光色を検証し、動画・仮想カメラの受信検証はChromiumで実施しています。Safari実機は未検証です。
 
 ## 📄 ライセンス
 

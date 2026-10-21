@@ -238,7 +238,7 @@ photon-flicker-link/          # Project
 
 A browser with JavaScript and Canvas is required. The sending, lesson and offline-decoding UI works when opening `index.html` directly. Use HTTPS or localhost for camera access and grant browser permission. For local HTTP, run `python -m http.server 8000 --bind 127.0.0.1`.
 
-The tool uses video-frame timestamps with rVFC when available, otherwise rAF sampling. rAF timestamps and fps are estimates and do not guarantee rVFC precision. Camera, codec and exposure/WB support depend on the device. UI checks cover Chromium and Firefox; video/virtual-camera end-to-end checks use Chromium. Physical Safari testing has not been performed.
+The tool uses video-frame timestamps with rVFC when available, otherwise rAF sampling. rAF timestamps and fps are estimates and do not guarantee rVFC precision. Camera, codec and exposure/WB support depend on the device. UI checks and every transmitted color from Start through automatic completion are verified in Chromium and Firefox; video/virtual-camera reception checks use Chromium. Physical Safari testing has not been performed.
 
 ## 📄 License
 
