@@ -22,7 +22,10 @@
     if ((options.mode !== undefined && options.mode !== 'mono') || (options.levels !== undefined && options.levels !== 2)) {
       throw new RangeError('invalidSettings');
     }
-    return { ...core.config({ ...options, mode: 'mono', levels: 2 }), protocol: 3, spatial: true, calibration: 0, bits: 1 };
+    const settings = core.config({ ...options, mode: 'mono', levels: 2 });
+    // V3 can use the fixed panel references as its two signal levels. Legacy formats retain their range.
+    if (settings.contrast === 'high') { settings.low = 0.015; settings.high = 0.85; }
+    return { ...settings, protocol: 3, spatial: true, calibration: 0, bits: 1 };
   }
   function crc16(bytes) {
     let crc = 0xffff;

@@ -3,6 +3,7 @@
 v3は、グレースケールの明暗対と専用クロックで1ビットずつ送る時系列の光通信です。
 初期値は2 symbol/s、低コントラスト、本文はUTF-8最大8バイトです。
 旧v1/v2の録画と互換性はなく、送受信の両端で同じ版を使います。
+四隅マーカー版ではv3初版からパネルを変更しました。両端の再読み込みが必要です。
 
 ## 空間の使い方とQR転送との違い
 
@@ -14,7 +15,7 @@ v3は、グレースケールの明暗対と専用クロックで1ビットず�
 本文のデータは、1回の表示につき1ビットだけです。
 同じビットが続いても、専用クロックは毎回反転します。
 短文の復元には表示の時系列が必要で、1枚の画像に本文を格納しません。
-固定枠は位置と明暗の基準に使い、データのセル配列ではありません。
+固定の四隅マーカーは位置と姿勢、白黒の領域は明暗の基準に使い、データのセル配列ではありません。
 QR、連続QR、カラーコード、独自の2次元バーコードによる転送は採用しません。
 
 | 左からの帯 | 内容 | 0 | 1 |
@@ -31,34 +32,41 @@ QR、連続QR、カラーコード、独自の2次元バーコードによる転
 
 ## パネルと画像の読み取り
 
-基準のパネルは640×240px、縦横比8:3です。
-外周は線形輝度0.85、その16px内側から608×208pxを0.015で描きます。
-各帯は左端x=32、180、328、476px、上端y=32px、幅132px、高さ176pxです。
-通常の帯の低値と高値は0.18/0.32、高コントラストは0.06/0.60です。
-描画時にsRGB値へ変換します。停止時の4本はすべて0.25で静止します。
+基準のパネルは640×320px、縦横比2:1です。
+白い背景は線形輝度0.85、固定の黒い領域は0.015で描きます。
+四隅に80pxの腕と24pxの線幅を持つL字を描き、外側の頂点を(16,16)、(624,16)、(624,304)、(16,304)とします。
+上部の固定バーは(x,y,幅,高さ)=(128,24,96,24)と(272,24,24,48)です。
+非対称な配置から回転と反射を区別します。これらの形や位置は本文やクロックで変わりません。
+中央の黒い背景は(16,112,608,96)、各帯は左端x=48、192、336、480px、上端y=120px、幅112px、高さ80pxです。
+通常の帯の低値と高値は0.18/0.32、高コントラストは0.015/0.85です。
+描画時にsRGB値へ変換すると、8ビット値は通常が118/153、高コントラストが33/237です。
+UIでは通常を灰色2段階、高コントラストを黒・白に近い2段階と説明します。
+高コントラストでも送信の確認ダイアログを維持します。端末全体の画面輝度を調整する操作とは別の設定です。
+停止時の4本はすべて0.25で静止します。
 
-探索範囲には固定枠を含むパネル全体を入れます。
+探索範囲には四隅と上部の目印を含むパネル全体を入れます。
 受信画像を線形化し、輝度係数0.2126/0.7152/0.0722でRGBを合成します。
-暗い連結領域の候補を探し、四角形と上下の白黒枠を検査します。
-連結領域の粗い探索後、枠と帯の測定には元の画像の画素を使います。
-固定枠が複数見つかった場合は、以前のパネルをそのまま信頼せず、そのフレームを拒否します。
+局所的な明暗差からL字候補を探し、元画像の辺を使って四隅の位置を求めます。
+四隅と既知のパネル座標の対応から3×3の射影変換を作り、測定点を受信画像へ写します。
+遠近変形に双線形補間を流用しません。
+平面と画像の射影関係は[OpenCVのホモグラフィ解説](https://docs.opencv.org/4.13.0/d9/dab/tutorial_homography.html)を参照してください。
+OpenCVやマーカー辞書は実装へ組み込んでいません。
 
-受け付ける形には次の制限があります。値は撮像後の解析用画像に対するものです。
-
-- 暗い枠の長辺が90px以上、短辺が30px以上
-- 長辺と短辺の比が2.2〜3.8
-- 上下辺の長さの比と左右辺の長さの比が、それぞれ0.75以上
-- 主軸の傾きが±15度以内
-- 外側の枠が探索範囲に収まり、必要な基準点を取得できること
-
-これらの境界内でも、検出や復号の成功は保証しません。
-強い遠近変形、回転、部分的な遮蔽、ぼけ、白飛び、小さい像は対象外です。
-画面上の見かけの角度だけでなく、実際に枠と帯を測れる必要があります。
-上下を正しくして4本を横に並べてください。180度の回転や左右反転は自動補正しません。
+回転4通りと反射の有無による8通りについて、固定形状が一致するかを検査します。
+姿勢が一意でない場合、四隅のいずれかが欠ける場合、必要な基準点が範囲外になる場合は拒否します。
+パネルが複数見つかった場合も、以前のパネルをそのまま信頼せず、そのフレームを拒否します。
+粗い探索は最大320×240点、L字候補は8個までとし、最大70組の四隅と各8通りの姿勢を検査します。
+候補の上限を超えた場合は曖昧として拒否し、画像の複雑さで候補の組み合わせを無制限に増やしません。
+強い遠近変形、ぼけ、白飛び、小さい像などでは失敗します。
+回転を補正できても、撮像行ごとの露光時刻差まで取り除けるわけではありません。
+4本を横に並べ、正面に近い角度で固定することを推奨します。
 
 1か所の測定では7行×5列の35点を読みます。
 中央値からの偏差の中央値に1.4826を掛けて雑音の目安とし、上下7点ずつを除く21点の平均を測定値とします。
-5か所の黒基準と2か所の白基準を横方向に補間し、各帯の値を次式で補正します。
+固定の黒基準と白基準から各帯の値を次式で補正します。
+黒基準はx=32、176、320、464、608pxの中央、白基準は各帯の中心xのy=88、232pxです。
+白基準は幅40px、高さ8pxとし、中央の黒い領域から離れた白い面を採取します。
+各帯の左右の黒基準、上下の白基準をそれぞれ平均し、その帯の基準値にします。
 
 ```text
 normalized[i] = (measured[i] - blackReference[i]) / (whiteReference[i] - blackReference[i])
@@ -67,7 +75,7 @@ clock = clamp(normalized[2] - normalized[3], -1, 1)
 ```
 
 基準の白黒差には0.025以上が必要です。
-上下枠の基準からのずれは基準差の18%以下、雑音は12%以下とします。
+固定形状の基準からのずれは基準差の18%以下、雑音は12%以下とします。
 各帯の補正値が−0.05〜1.05から外れた場合も拒否します。
 対の生の輝度差が`max(0.002, 6×雑音)`未満、または補正後の差が0.04未満なら品質は0です。
 それ以外は`clamp(abs(補正後の差)/0.15)`を、その対の品質とします。
@@ -212,7 +220,28 @@ period     = midpoint(endLow, endHigh) - midpoint(startLow, startHigh)
 すべてのブロックがそろったら番号順に連結し、全体CRC-16と厳密なUTF-8を確認します。
 双方が成功したときだけ最終結果を成功とします。
 ライブ文字は先頭から連続してそろった検査済みブロックを表示し、後半だけでは本文を確定しません。
+初期設定2 symbol/sの正常30fps入力では、最初の表示はAで約40秒、LIGHTの先頭LIGHで約52秒です。
+開始前3秒は別です。未検査の文字を先に見せる方式ではありません。
 識別情報は16ビットのCRCなので衝突があり、別の通信を絶対に混ぜない保証や認証は提供しません。
+
+## 受信進捗と現在の明暗差
+
+受信進捗は、現在のブロックで観測したビット位置を表示します。
+同期前は準備中として0/1を表示し、経過時間から進捗を作りません。
+同期後はヘッダー16ビットに対する取得数を表示します。
+ヘッダーからブロック長が判明すると、分子・分母ともにヘッダー16ビットを含むブロック全体の表示へ切り替えます。
+分子は`receiveProgress.index + 1`です。判別不能のビットも取得位置に含み、復元済みのビット数とはしません。
+次のブロックや再同期では表示の基準を更新します。
+
+残り時間は`ceil((total - n) × sync.period)`秒の概算です。
+同期済み、ブロック長が既知、クロックを読める、受信中という条件がそろう場合だけ表示します。
+送信本文は受信前には不明なので、LIGHTの所要時間を固定のカウントダウンとして使いません。
+停止時には取得位置を保持し、残り時間の概算を消します。
+
+現在の明暗差は、パネル検出後にデータとクロックを個別に判定します。
+それぞれの品質が0.45以上かつ差の絶対値が0.025以上なら、現在の差は足りると表示します。
+パネル未検出と、採取前などの未測定を差の不足とは区別します。
+これは現在のフレームの判定です。時間順のビット取得、誤り訂正、CRC成功を保証する表示ではありません。
 
 ## 所要時間と入出力の上限
 
@@ -257,8 +286,12 @@ rAFの時刻は撮像時刻そのものではなく、rVFCと同じ精度を保�
 [画像経路のテスト](../test/channel.test.js)は、実際の描画、模擬撮像、実際のパネル読み取り、復号をつなぎます。
 [入出力テスト](../test/io.test.js)には、保持時間、提示フレーム数、時刻停止からの復帰、起動待ちと資源解放を含めます。
 
+合成画像で、投影幅224px、遠近差10%、線形輝度の利得0.25と加算0.12、半径1pxのぼかし3回を重ねると、低・高の両設定とも4状態すべてでマーカーを検出できませんでした。
+これは信号差を読む前の検出失敗であり、高コントラストで解消したとはしません。
+
 v2で報告されたiPhoneからPC/Vivaldiへの受信失敗の実機原因は未特定です。
-v3の2台間通信、距離、環境光、端末差、露出とWBの実効は本人確認待ちです。
+v3でもiPhoneとPCの両方向で文字が出ず、自動検出できないとの報告があります。
+四隅マーカー版での解決、2台間通信、距離、環境光、端末差、露出とWBの実効は本人確認待ちです。
 合成入力の成功は物理的な通信距離や成功率を示しません。
 実施済みの範囲と採取値は[検証記録](verification.md)を参照してください。
 
@@ -266,12 +299,23 @@ v3の2台間通信、距離、環境光、端末差、露出とWBの実効は本
 
 V3 is a serial optical channel carrying one payload bit per display step.
 Two grayscale bars encode data and its complement; two more encode an independent clock and its complement.
-The fixed frame provides geometry and brightness references, not a spatial payload grid.
+Four thick static L-shaped corners and asymmetric fixed marks establish geometry and orientation.
+The 640×320 panel is sampled through a planar homography, with local black/white references.
+The marks never encode payload bits. Both endpoints must reload after this panel-layout update.
 QR, animated QR, color codes and custom two-dimensional barcode transfer are excluded.
+Low contrast uses linear levels 0.18/0.32 (sRGB 118/153); High uses near-black/near-white levels 0.015/0.85 (sRGB 33/237).
+High contrast still requires confirmation. It is separate from the device's screen-brightness control.
 
 Payload chunks contain up to four bytes, with a Hamming-protected header, whole-message CRC-16 identity,
 block CRC-8 and two Reed-Solomon parity bytes. The receiver keeps checked blocks across resynchronization,
 but accepts the final text only after whole-message CRC-16 and strict UTF-8 checks.
 Camera-edge times are intervals between old and new observations, and missing transitions are not invented.
+The progress bar counts observed bit positions, including unreadable positions, rather than verified data.
+It first counts the 16 header bits, then the whole block including that header once its length is known.
+Remaining time uses the observed clock period and appears only during active reception with synchronization, a known length and a readable clock.
+Current data and clock contrast are assessed separately; sufficient contrast does not establish successful decoding or CRC.
+At 2 symbol/s, the first checked text takes about 40 seconds for A or 52 seconds for the LIGH prefix of LIGHT, plus the three-second preparation.
 The 240-second live deadline begins with the first sampled frame; opening is limited separately to 30 seconds.
-Physical iPhone-to-PC/Vivaldi reliability remains awaiting owner testing.
+The owner reported V3 failure in both directions between iPhone and PC browsers.
+The physical cause is unidentified, and resolution by the corner-marker update awaits owner testing.
+A synthetic combination of 224-pixel width, 10% perspective difference, 0.25 gain plus 0.12 offset, and three radius-one blur passes still prevents marker detection at both contrast settings.

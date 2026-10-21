@@ -44,9 +44,10 @@
           <select id="rate"><option value="2">2 symbol/s</option><option value="4">4 symbol/s</option><option value="8">8 symbol/s</option></select>
         </div>
         <div class="field"><label for="contrast" data-i18n="contrast"></label>
-          <select id="contrast"><option value="low" data-i18n="low"></option><option value="high" data-i18n="high"></option></select>
+          <select id="contrast" aria-describedby="contrast-note"><option value="low" data-i18n="low"></option><option value="high" data-i18n="high"></option></select>
         </div>
       </div>
+      <p id="contrast-note" class="muted" data-i18n="contrastNote"></p>
       <p data-i18n="schemeNote"></p>
       <p class="muted" data-i18n="settingsNote"></p>
     </section>
@@ -97,7 +98,7 @@
     <section id="transmitter" class="card" aria-labelledby="tx-title">
       <h2 id="tx-title"><span class="number">04</span> <span data-i18n="transmitter"></span></h2>
       <p id="tx-countdown" class="countdown" role="status" aria-live="polite"></p>
-      <canvas id="tx" width="640" height="240" role="img" data-label="txLabel"></canvas>
+      <canvas id="tx" width="640" height="320" role="img" data-label="txLabel"></canvas>
       <p id="tx-progress" class="mono" aria-live="off"></p>
       <p id="tx-remaining" class="mono" aria-live="off"></p>
       <p class="muted" data-i18n="txNote"></p>
@@ -125,12 +126,32 @@
         <div class="receive-monitor">
       <p><strong data-i18n="regionCoverage"></strong></p>
       <canvas id="preview" width="640" height="480" role="img" data-label="previewLabel"></canvas>
+      <div class="receive-feedback" aria-live="off">
+        <p id="receive-stage" class="receive-stage" aria-live="off"></p>
+        <p id="receive-meter-label" class="meter-label"></p>
+        <progress id="receive-meter" max="1" value="0" aria-labelledby="receive-meter-label" aria-describedby="receive-meter-note"></progress>
+        <p id="receive-estimate" class="meter-estimate" hidden></p>
+        <dl class="signal-readiness" aria-describedby="signal-readiness-note">
+          <div><dt data-i18n="signalPanelLabel"></dt><dd id="signal-panel" data-state="unmeasured"></dd></div>
+          <div><dt data-i18n="signalDataLabel"></dt><dd id="signal-data" data-state="unmeasured"></dd></div>
+          <div><dt data-i18n="signalClockLabel"></dt><dd id="signal-clock" data-state="unmeasured"></dd></div>
+        </dl>
+        <details id="receive-display-help">
+          <summary data-i18n="receiveDisplayHelp"></summary>
+          <p id="receive-meter-note" class="muted" data-i18n="meterNote"></p>
+          <p id="signal-readiness-note" class="muted" data-i18n="signalReadinessNote"></p>
+        </details>
+      </div>
       <label class="choice"><input id="preview-enabled" type="checkbox" checked><span data-i18n="previewEnabled"></span></label>
       <p id="receive-status" role="status"></p>
       <p id="receive-progress" class="mono" aria-live="off"></p>
       <p id="block-progress" class="mono" aria-live="polite"></p>
       <h3 data-i18n="liveTitle"></h3>
-      <output id="live" class="live-text" aria-live="polite"></output>
+      <p id="live-note" class="muted" hidden></p>
+      <div class="live-box">
+        <output id="live" class="live-text" aria-live="polite" aria-describedby="live-note"></output>
+        <p id="live-empty" class="live-placeholder" aria-live="off"></p>
+      </div>
       <h3 data-i18n="graphTitle"></h3>
       <p id="graph-state" class="mono" aria-live="off"></p>
       <button id="receive-again" type="button" data-i18n="receiveAgain" hidden></button>

@@ -72,6 +72,23 @@ test('V3 one serial bit, two complementary pairs, constant panel mean and finite
   assert.equal(S.duration(1), 41); assert.equal(S.duration(5), 93); assert.equal(S.duration(8), 105);
 });
 
+test('V3 high contrast uses the panel reference range without changing legacy amplitudes or wire timing', () => {
+  const low = S.config(), high = S.config({ contrast: 'high' });
+  assert.deepEqual([low.low, low.high], [0.18, 0.32]);
+  assert.deepEqual([high.low, high.high], [0.015, 0.85]);
+  for (const legacy of [require('../codec-core.js'), require('../reliable-codec.js')]) {
+    const settings = legacy.config({ contrast: 'high' });
+    assert.deepEqual([settings.low, settings.high], [0.06, 0.60]);
+  }
+  for (const rate of [2, 4, 8]) {
+    const ordinary = S.transmission('A', S.config({ rate }));
+    const strong = S.transmission('A', S.config({ rate, contrast: 'high' }));
+    assert.deepEqual(strong.frames, ordinary.frames);
+    assert.equal(strong.seconds, ordinary.seconds);
+    assert.equal(strong.frames.length, ordinary.frames.length);
+  }
+});
+
 test('V3 clean UTF-8 round trips at all rates, sample phases and independently configured receive rates', () => {
   for (const text of ['', 'A', 'AB', 'ABC', 'ABCD', 'LIGHT', 'ABCDEF', 'ABCDEFG', '12345678', '日本', '🔦', '\0'.repeat(8)]) {
     for (const rate of [2, 4, 8]) for (const offset of [0.13, 0.37, 0.531]) {
