@@ -15,13 +15,17 @@
   const clamp = (x, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, x));
   const mean = values => values.reduce((a, b) => a + b, 0) / values.length;
   const luminance = rgb => rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  // A common gain changes brightness, but cancels out in the red/blue ratio.
+  const signal = (rgb, mode = 'mono') => mode === 'bicolor' ?
+    (rgb[0] + rgb[2] > 0.0001 ? rgb[0] / (rgb[0] + rgb[2]) : 0.5) : luminance(rgb);
 
   function config(options = {}) {
     const mode = options.mode === undefined ? 'mono' : options.mode;
     const levels = options.levels === undefined ? 2 : options.levels;
     const rate = options.rate === undefined ? 2 : options.rate;
     const contrast = options.contrast === undefined ? 'low' : options.contrast;
-    if (!['mono', 'color'].includes(mode) || ![2, 4].includes(levels) || ![2, 4, 8].includes(rate) ||
+    if (!['mono', 'color', 'bicolor'].includes(mode) || ![2, 4].includes(levels) || ![2, 4, 8].includes(rate) ||
+        (mode === 'bicolor' && levels !== 2) ||
         !['low', 'high'].includes(contrast)) throw new RangeError('invalidSettings');
     const low = contrast === 'low' ? 0.18 : 0.06;
     const high = contrast === 'low' ? 0.32 : 0.60;
@@ -68,7 +72,7 @@
         for (let b = 0; b < channelBits; b++) value = value * 2 + (bits[i + c * channelBits + b] || 0);
         channels.push(value);
       }
-      symbols.push(settings.mode === 'mono' ? [channels[0], channels[0], channels[0]] : channels);
+      symbols.push(settings.mode !== 'color' ? [channels[0], channels[0], channels[0]] : channels);
     }
     return symbols;
   }
@@ -76,7 +80,7 @@
   function symbolsToBytes(symbols, settings = config()) {
     const bits = [];
     for (const symbol of symbols) {
-      for (const value of settings.mode === 'mono' ? symbol.slice(0, 1) : symbol) {
+      for (const value of settings.mode !== 'color' ? symbol.slice(0, 1) : symbol) {
         const valid = Number.isInteger(value) && value >= 0 && value < settings.levels;
         for (let b = Math.log2(settings.levels) - 1; b >= 0; b--) bits.push(valid ? ((value >> b) & 1) : null);
       }
@@ -122,6 +126,20 @@
       for (let c = 0; c < 3; c++) rgb[c] += LINEAR[data[i + c]];
     }
     return rgb.map(value => value / (data.length / 4));
+  }
+
+  function pixelHealth(data) {
+    if (!data || !data.length || data.length % 4) throw new RangeError('invalidPixels');
+    let white = 0, dark = 0, clipped = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const lo = Math.min(data[i], data[i + 1], data[i + 2]);
+      const hi = Math.max(data[i], data[i + 1], data[i + 2]);
+      if (lo >= 250) white++;
+      if (hi <= 8) dark++;
+      if (hi >= 250) clipped++;
+    }
+    const count = data.length / 4;
+    return { white: white / count, dark: dark / count, clipped: clipped / count };
   }
 
   function multiply(matrix, vector) {
@@ -172,7 +190,12 @@
     body.push(crc8(body));
     const frames = [];
     const add = (kind, values) => {
-      const rgb = values.map(v => settings.low + (settings.high - settings.low) * v);
+      let rgb = values.map(v => settings.low + (settings.high - settings.low) * v);
+      if (settings.mode === 'bicolor') {
+        const lo = settings.contrast === 'low' ? 0.06 : 0.02;
+        const hi = settings.contrast === 'low' ? 0.32 : 0.60;
+        rgb = values[0] ? [hi, lo, lo] : [lo, lo, hi];
+      }
       frames.push({ kind, rgb, srgb: rgb.map(linearToSrgb), index: frames.length });
     };
     if (settings.mode === 'color') {
@@ -204,16 +227,29 @@
     return [0, 1, 2].map(c => mean(selected.map(s => s.rgb[c])));
   }
 
+  function observedGapRGB(samples, center, period, normalize, levels) {
+    // Only bridge an empty central window with two agreeing observations inside this symbol.
+    // Keep a 10% boundary guard; never copy a neighboring symbol across a fully missing one.
+    const before = samples.findLast(s => s.time < center);
+    const after = samples.find(s => s.time > center);
+    if (!before || !after || center - before.time > 0.4 * period || after.time - center > 0.4 * period) return null;
+    const a = normalize(before.rgb).map(v => classify(v, levels));
+    const b = normalize(after.rgb).map(v => classify(v, levels));
+    if (a.some((v, c) => v.confidence <= 0.65 || b[c].confidence <= 0.65 || v.value !== b[c].value)) return null;
+    return before.rgb.map((v, c) => (v + after.rgb[c]) / 2);
+  }
+
   // Fit known transition positions to timestamps. The receiver does not use the sender's rate setting.
-  function findPreamble(samples) {
+  function findPreamble(samples, mode = 'mono') {
     if (samples.length < 25) return null;
-    const sorted = samples.map(s => luminance(s.rgb)).sort((a, b) => a - b);
+    const measure = rgb => signal(rgb, mode);
+    const sorted = samples.map(s => measure(s.rgb)).sort((a, b) => a - b);
     const lo = sorted[Math.floor(sorted.length * 0.1)], hi = sorted[Math.floor(sorted.length * 0.9)];
     if (hi - lo < 0.025) return null;
-    let state = luminance(samples[0].rgb) > (lo + hi) / 2 ? 1 : 0;
+    let state = measure(samples[0].rgb) > (lo + hi) / 2 ? 1 : 0;
     const edges = [];
     for (let i = 1; i < samples.length; i++) {
-      const value = (luminance(samples[i].rgb) - lo) / (hi - lo);
+      const value = (measure(samples[i].rgb) - lo) / (hi - lo);
       const next = value > 0.6 ? 1 : value < 0.4 ? 0 : state;
       if (next !== state) {
         edges.push({ time: (samples[i].time + samples[i - 1].time) / 2, up: next === 1 });
@@ -235,9 +271,9 @@
       if (slots.some(v => v === null)) continue;
       const dark = [0, 1, 2].map(c => mean(slots.filter((_, j) => !PREAMBLE[j]).map(rgb => rgb[c])));
       const light = [0, 1, 2].map(c => mean(slots.filter((_, j) => PREAMBLE[j]).map(rgb => rgb[c])));
-      const low = luminance(dark), high = luminance(light);
+      const low = measure(dark), high = measure(light);
       if (high - low < 0.025) continue;
-      if (slots.some((rgb, j) => Math.abs((luminance(rgb) - low) / (high - low) - PREAMBLE[j]) > 0.3)) continue;
+      if (slots.some((rgb, j) => Math.abs((measure(rgb) - low) / (high - low) - PREAMBLE[j]) > 0.3)) continue;
       const intervals = samples.slice(1).map((s, j) => s.time - samples[j].time).sort((a, b) => a - b);
       const samplePeriod = intervals[Math.floor(intervals.length / 2)];
       return { start, period, low, high, dark, light, framesPerSymbol: period / samplePeriod, error,
@@ -273,7 +309,7 @@
         samples = samples.filter(s => time - s.time < 18);
         if (time - searchTime < 0.08) return events;
         searchTime = time;
-        sync = findPreamble(samples);
+        sync = findPreamble(samples, settings.mode);
         if (!sync) return events;
         if (sync.framesPerSymbol < 2) {
           done = true;
@@ -286,7 +322,7 @@
         events.push({ type: 'sync', ...sync, calibration });
       }
       const raw = calibration ? multiply(calibration.inverse, rgb.map((v, c) => v - calibration.black[c])) :
-        Array(3).fill((luminance(rgb) - sync.low) / (sync.high - sync.low));
+        Array(3).fill((signal(rgb, settings.mode) - sync.low) / (sync.high - sync.low));
       const rawDecisions = raw.map(v => classify(v, settings.levels));
       const rawLevels = rawDecisions.map(d => d.value);
       if (rawDecisions.every(d => d.confidence > 0.65)) {
@@ -312,9 +348,13 @@
         const slot = symbols.length + endValues.length;
         const center = dataStart + (slot + 0.5) * sync.period;
         if (time < center + 0.28 * sync.period) break;
-        const value = windowRGB(samples, center - 0.28 * sync.period, center + 0.28 * sync.period);
+        const ending = dataCount !== null && symbols.length >= dataCount;
+        const normalize = rgb => calibration && !ending ? multiply(calibration.inverse, rgb.map((v, c) => v - calibration.black[c])) :
+          Array(3).fill((signal(rgb, settings.mode) - sync.low) / (sync.high - sync.low));
+        const value = windowRGB(samples, center - 0.28 * sync.period, center + 0.28 * sync.period) ||
+          observedGapRGB(samples, center, sync.period, normalize, ending ? 2 : settings.levels);
         if (dataCount !== null && symbols.length >= dataCount) {
-          const normalized = value ? (luminance(value) - sync.low) / (sync.high - sync.low) : NaN;
+          const normalized = value ? (signal(value, settings.mode) - sync.low) / (sync.high - sync.low) : NaN;
           const decision = Number.isFinite(normalized) ? classify(normalized) : { value: null };
           endValues.push(decision.value);
           if (endValues.length === END.length) {
@@ -335,7 +375,7 @@
         }
         let normalized = [NaN, NaN, NaN];
         if (value) normalized = calibration ? multiply(calibration.inverse, value.map((v, c) => v - calibration.black[c])) :
-          Array(3).fill((luminance(value) - sync.low) / (sync.high - sync.low));
+          Array(3).fill((signal(value, settings.mode) - sync.low) / (sync.high - sync.low));
         const classified = normalized.map(v => Number.isFinite(v) ? classify(v, settings.levels) : { value: null, confidence: 0 });
         const confidence = Math.min(...classified.map(d => d.confidence));
         const decision = { type: 'symbol', index: symbols.length, time: center, normalized, confidence,
@@ -356,7 +396,7 @@
         if (length !== null) events.push({ type: 'text', text: partialText(bytes.slice(1, length + 1)) });
         // Slow common-mode drift tracking, only at confidently observed binary endpoints.
         if (!calibration && settings.levels === 2 && confidence > 0.65 && value) {
-          const y = luminance(value);
+          const y = signal(value, settings.mode);
           if (decision.values[0] === 0) sync.low += 0.04 * (y - sync.low);
           if (decision.values[0] === 1) sync.high += 0.04 * (y - sync.high);
         }
@@ -372,7 +412,7 @@
     return { push, finish, clear, get synchronized() { return !!sync; } };
   }
 
-  return Object.freeze({ MAX_BYTES, RECEIVE_SECONDS, CONFIDENCE, PREAMBLE, END, config, clamp, luminance,
+  return Object.freeze({ MAX_BYTES, RECEIVE_SECONDS, CONFIDENCE, PREAMBLE, END, config, clamp, luminance, signal, pixelHealth,
     bytesOf, crc8, bytesToSymbols, symbolsToBytes, partialText, srgbToLinear, linearToSrgb, averageRGBA,
     multiply, invert3, calibrate, classify, transmission, duration, matchRate, findPreamble, detectCalibration, createDecoder });
 }));

@@ -32,6 +32,11 @@ def movie(mode, text='LIGHT', levels=2):
     for n in range(math.ceil((tx['seconds'] + 4) * 30)):
         index = math.floor((n / 30 - 3) * 8)
         rgb = tx['frames'][index]['srgb'] if 0 <= index < len(tx['frames']) else [118] * 3
+        if mode == 'bicolor' and 0 <= index < len(tx['frames']):
+            # Common brightness drift and fixed red/blue imbalance before 8-bit video encoding.
+            gain = 0.15 * (1 + 0.5 * math.sin(n / 30 * 2))
+            linear = [v * gain * [1.2, 0.9, 0.8][c] + 0.0005 for c, v in enumerate(tx['frames'][index]['rgb'])]
+            rgb = [round(255 * (12.92*v if v <= 0.0031308 else 1.055*v**(1/2.4)-0.055)) for v in linear]
         process.stdin.write(bytes(rgb) * 160 * 120)
     process.stdin.close()
     assert process.wait() == 0
@@ -52,6 +57,35 @@ def errors_for(page):
     return errors
 
 
+def trace_receiver(context):
+    # Synthetic QA only: retain the sampled signal and immutable decoder events for failures.
+    context.add_init_script('''window.receiveTrace = {samples:[],events:[],stops:[]};
+      Object.defineProperty(window,'PhotonCamera',{configurable:true,set(original) {
+        Object.defineProperty(window,'PhotonCamera',{value:{...original,create(...args) {
+          const camera=original.create(...args), start=camera.start;
+          camera.start=options=>start({...options,onFrame(frame) {
+            receiveTrace.samples.push({...frame,at:performance.now()}); options.onFrame(frame);
+          },onStop(reason) {receiveTrace.stops.push(reason);options.onStop?.(reason);}});
+          return camera;
+        }}});
+      }});
+      Object.defineProperty(window,'PhotonCodec',{configurable:true,set(original) {
+        Object.defineProperty(window,'PhotonCodec',{value:{...original,createDecoder(...args) {
+          const decoder=original.createDecoder(...args), push=decoder.push;
+          decoder.push=(...args)=>{const events=push(...args);
+            receiveTrace.events.push(...structuredClone(events));return events;};
+          return decoder;
+        }}});
+      }});''')
+
+
+def save_receiver_trace(page, name):
+    state = page.evaluate('''() => JSON.stringify({...receiveTrace,
+      status:document.querySelector('#status').textContent,error:document.querySelector('#error').textContent,
+      crc:document.querySelector('#crc').textContent,live:document.querySelector('#live').textContent})''')
+    (OUT / f'{name}-trace.json').write_text(json.dumps(json.loads(state), indent=2), encoding='utf-8')
+
+
 def layout(page):
     actual = page.evaluate('''() => {
       const visible = el => el.getClientRects().length > 0;
@@ -64,6 +98,15 @@ def layout(page):
     }''')
     assert actual['overflow'] == 0, actual
     assert not actual['small'], actual
+    if page.locator('#receiver').is_visible():
+        boxes = page.locator('#preview,#region-panel,#graph,#live').evaluate_all('''els =>
+          Object.fromEntries(els.map(el => {const r=el.getBoundingClientRect();
+            return [el.id,{left:r.left,right:r.right,top:r.top,bottom:r.bottom}];}))''')
+        if page.viewport_size['width'] >= 900:
+            assert boxes['region-panel']['left'] >= boxes['preview']['right'], boxes
+        else:
+            assert boxes['region-panel']['top'] >= boxes['graph']['bottom'], boxes
+        assert boxes['live']['bottom'] <= boxes['graph']['top'], boxes
 
 
 def no_japanese(page):
@@ -116,8 +159,9 @@ def interface(p, urls, report):
                                 assert page.locator('#receiver').is_visible() == (role != 'send')
                                 assert page.locator('#file-fields').is_visible() == (role == 'offline')
                                 assert page.locator('#send-fields').is_visible() == (role == 'send')
-                                page.select_option('#mode', 'color')
-                                layout(page)
+                                for mode in ['mono', 'color', 'bicolor']:
+                                    page.select_option('#mode', mode)
+                                    layout(page)
                             page.select_option('#role', 'send')
                             page.fill('#text-input', '123456789')
                             page.click('#start')
@@ -151,11 +195,181 @@ def interface(p, urls, report):
             browser.close()
 
 
+def camera_ui(p, url, report):
+    for engine in [p.chromium, p.firefox]:
+        options = {'args': ['--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream=device-count=2,fps=30']} if engine.name == 'chromium' else {
+            'firefox_user_prefs': {'media.navigator.streams.fake': True, 'media.navigator.permission.disabled': True}}
+        browser = engine.launch(**options)
+        try:
+            context = browser.new_context(reduced_motion='no-preference')
+            context.add_init_script('''window.cameraTracks = []; window.cameraRequests = [];
+              const openCamera = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+              navigator.mediaDevices.getUserMedia = async constraints => {
+                cameraRequests.push(constraints);
+                const stream = await openCamera(constraints);
+                // Firefox requires explicit opt-in for synthetic events on test media tracks.
+                // Actual hardware events are trusted; this override exists only in this fixture.
+                for (const track of stream.getVideoTracks()) {
+                  const listen = track.addEventListener.bind(track);
+                  track.addEventListener = (name, listener, options) => listen(name, listener, options, true);
+                }
+                cameraTracks.push(...stream.getVideoTracks());
+                if (window.holdCamera) await new Promise(resolve => { window.releaseCamera = resolve; });
+                return stream;
+              };''')
+            page = context.new_page()
+            errors = errors_for(page)
+            page.goto(url + '?lang=en')
+            page.select_option('#role', 'receive')
+            assert page.locator('#camera-fields').is_visible()
+            assert page.evaluate('() => cameraRequests.length') == 0
+            assert 'does not start' in page.locator('#role-note').inner_text()
+            assert 'Start reception' in page.locator('#preview-note').inner_text()
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.wait_for_function("() => document.querySelector('#camera-select').value.length > 0")
+            assert page.locator('#live').inner_text() == ''
+            assert page.locator('#crc').inner_text() == '—'
+            assert page.locator('#start').is_enabled()
+            assert page.locator('#camera-test-stop').is_enabled()
+            first = page.locator('#camera-select').input_value()
+            choices = page.locator('#camera-select option').evaluate_all('els => els.map(el => el.value).filter(Boolean)')
+            assert len(choices) >= (2 if engine.name == 'chromium' else 1), choices
+            second = next((value for value in choices if value != first), '')
+            page.select_option('#camera-select', second)
+            page.wait_for_function("() => cameraTracks.length === 2 && cameraTracks[0].readyState === 'ended'")
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            selected = page.locator('#camera-select').input_value()
+            assert page.evaluate('() => cameraTracks[1].getSettings().deviceId') == selected
+            assert page.evaluate('() => cameraRequests.every(request => request.audio === false)')
+            for width in [320, 1280]:
+                page.set_viewport_size({'width': width, 'height': 1000})
+                for theme in ['light', 'dark']:
+                    if page.locator('html').get_attribute('data-theme') != theme:
+                        page.click('#theme')
+                    for language in ['en', 'ja']:
+                        if page.locator('html').get_attribute('lang') != language:
+                            page.click('#language')
+                        layout(page)
+                        if language == 'en':
+                            no_japanese(page)
+                        if engine.name == 'chromium' and theme == 'light':
+                            page.locator('#receiver').screenshot(path=str(OUT / f'camera-test-{width}-{language}.png'))
+            if page.locator('html').get_attribute('lang') != 'en':
+                page.click('#language')
+            # Start reception directly from testing, retaining the chosen camera.
+            page.click('#start')
+            page.wait_for_function("() => cameraTracks.length === 3 && document.querySelector('#camera-check').textContent.includes('Receiving')")
+            assert page.evaluate("() => cameraTracks[1].readyState === 'ended'")
+            assert page.evaluate('() => cameraRequests[2].video.deviceId.exact') == selected
+            # Switching during reception also releases the track and starts a new decoder session.
+            page.select_option('#camera-select', first if selected != first else '')
+            page.wait_for_function("() => cameraTracks.length === 4 && cameraTracks[2].readyState === 'ended'")
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('Receiving')")
+            page.click('#stop')
+            assert page.evaluate("() => cameraTracks.every(track => track.readyState === 'ended')")
+            assert page.evaluate("() => document.querySelector('#source').srcObject === null")
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.evaluate("() => cameraTracks.at(-1).dispatchEvent(new Event('ended'))")
+            assert 'disconnected' in page.locator('#error').inner_text()
+            assert page.evaluate("() => cameraTracks.at(-1).readyState === 'ended'")
+            page.click('#camera-test')
+            page.wait_for_function("() => document.querySelector('#camera-check').textContent.includes('video frames received')")
+            page.evaluate('''() => { Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+              document.dispatchEvent(new Event('visibilitychange')); }''')
+            assert page.locator('#camera-test-stop').is_disabled()
+            assert page.evaluate("() => cameraTracks.every(track => track.readyState === 'ended')")
+            page.evaluate('''() => { Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
+              window.holdCamera = true; }''')
+            page.click('#camera-test')
+            page.wait_for_function('() => typeof window.releaseCamera === "function"')
+            page.click('#camera-test-stop')
+            page.evaluate('() => window.releaseCamera()')
+            page.wait_for_function("() => cameraTracks.every(track => track.readyState === 'ended')")
+            assert page.locator('#camera-test').is_enabled()
+            assert not page.locator('#error').inner_text()
+            # A refresh must retain an explicitly selected but currently missing device.
+            chosen = page.locator('#camera-select').input_value()
+            page.evaluate('() => { navigator.mediaDevices.enumerateDevices = async () => []; }')
+            page.click('#camera-refresh')
+            page.wait_for_function("() => document.querySelector('#camera-list-note').textContent.includes('list is empty')")
+            assert page.locator('#camera-select').input_value() == chosen
+            assert 'not in the current list' in page.locator('#camera-select option:checked').inner_text()
+            page.evaluate('''() => { navigator.mediaDevices.enumerateDevices = async () => {
+              throw new Error('enumeration unavailable'); }; }''')
+            page.click('#camera-refresh')
+            page.wait_for_function("() => document.querySelector('#camera-list-note').textContent.includes('list is unavailable')")
+            assert page.locator('#camera-test').is_enabled()
+            assert not errors, errors
+            report.append({'cameraUI': engine.name, 'listedCameras': len(choices), 'testAndReceiveSwitch': True,
+                'tracksReleased': True, 'hiddenStop': True, 'disconnect': True, 'latePermissionReleased': True,
+                'emptyAndUnavailableList': True, 'previewSizes': [320, 1280]})
+            print('camera UI', engine.name, 'PASS', len(choices), flush=True)
+            context.close()
+            for name, message in [('NotAllowedError', 'permission was denied'), ('NotFoundError', 'No available camera'),
+                ('NotReadableError', 'Cannot open the camera'), ('OverconstrainedError', 'selected camera is unavailable')]:
+                context = browser.new_context()
+                context.add_init_script('''navigator.mediaDevices.getUserMedia = async () => {
+                  throw new DOMException('test failure', ''' + json.dumps(name) + '''); };''')
+                page = context.new_page()
+                errors = errors_for(page)
+                page.goto(url + '?lang=en')
+                page.select_option('#role', 'receive')
+                page.click('#camera-test')
+                page.wait_for_function('(text) => document.querySelector("#error").textContent.includes(text)', arg=message)
+                assert page.locator('#start').is_enabled()
+                assert page.locator('#camera-test').is_enabled()
+                assert page.locator('#camera-test-stop').is_disabled()
+                assert not errors, errors
+                context.close()
+            report.append({'cameraErrors': engine.name, 'deniedMissingBusyUnavailable': True})
+        finally:
+            browser.close()
+
+
+def camera_adapter(p, url, report):
+    browser = p.chromium.launch(args=['--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream=device-count=2,fps=30'])
+    try:
+        page = browser.new_page()
+        errors = errors_for(page)
+        page.goto(url + '?lang=en')
+        page.evaluate('''async () => {
+          window.adapterFrames = 0;
+          window.adapterVideo = document.createElement('video');
+          window.adapter = PhotonCamera.create(adapterVideo, document.createElement('canvas'));
+          await adapter.start({onFrame() { window.adapterFrames++; }});
+          window.adapterDevices = await PhotonCamera.listCameras();
+          window.oldTrack = adapterVideo.srcObject.getVideoTracks()[0];
+        }''')
+        page.wait_for_function('() => window.adapterFrames >= 30')
+        assert page.evaluate('() => adapterDevices.length') == 2
+        page.evaluate('''async () => {
+          const next = adapterDevices.find(device => device.deviceId !== adapter.info.deviceId);
+          window.nextDevice = next.deviceId;
+          window.adapterFrames = 0;
+          await adapter.start({deviceId:next.deviceId,onFrame() { window.adapterFrames++; }});
+        }''')
+        page.wait_for_function('() => window.adapterFrames >= 30')
+        assert page.evaluate("() => oldTrack.readyState === 'ended' && adapter.info.deviceId === nextDevice")
+        info = page.evaluate('() => ({width:adapter.info.width,height:adapter.info.height,fps:adapter.info.fps})')
+        assert info['width'] == 640 and info['height'] == 480 and 25 < info['fps'] <= 31, info
+        assert page.evaluate("""() => { const track=adapterVideo.srcObject.getVideoTracks()[0]; adapter.stop();
+          return track.readyState === 'ended' && adapterVideo.srcObject === null; }""")
+        assert not errors, errors
+        report.append({'cameraAdapter': 'two devices; exact selection; old and final tracks released', **info})
+        print('camera adapter PASS', info, flush=True)
+    finally:
+        browser.close()
+
+
 def screen_transmission(p, url, report):
     for engine in [p.chromium, p.firefox]:
         browser = engine.launch()
         try:
-            for mode in ['mono', 'color']:
+            for mode in ['mono', 'color', 'bicolor']:
                 context = browser.new_context(reduced_motion='no-preference')
                 page = context.new_page()
                 errors = errors_for(page)
@@ -166,7 +380,14 @@ def screen_transmission(p, url, report):
                   PhotonCodec.config({mode:document.querySelector('#mode').value}))''')
                 # Read the canvas after each UI progress update, including the synchronous first symbol.
                 page.evaluate('''() => {
-                  window.sentFrames = [];
+                  window.sentFrames = []; window.counts = []; window.countTimes = [];
+                  const countdown = document.querySelector('#tx-countdown');
+                  new MutationObserver(() => {
+                    const text = countdown.textContent;
+                    if (text && text !== window.counts.at(-1)) {
+                      window.counts.push(text); window.countTimes.push(performance.now());
+                    }
+                  }).observe(countdown,{childList:true,subtree:true});
                   const progress = document.querySelector('#tx-progress');
                   const ctx = document.querySelector('#tx').getContext('2d');
                   let last = 0;
@@ -174,14 +395,23 @@ def screen_transmission(p, url, report):
                     const match = progress.textContent.match(/·\s*(\d+)\s*\/\s*(\d+)/);
                     if (!match || Number(match[1]) === last) return;
                     last = Number(match[1]);
+                    if (!window.sentFrames.length) window.firstSymbolAt = performance.now();
                     window.sentFrames.push({index:last-1,
                       srgb:Array.from(ctx.getImageData(10,10,1,1).data).slice(0,3)});
                   }).observe(progress, {childList:true,subtree:true,characterData:true});
                 }''')
                 page.click('#start')
-                if mode == 'color':
+                if mode != 'mono':
                     assert page.locator('#warning-dialog').is_visible()
                     page.click('#warning-accept')
+                # This new preparation phase is checked separately. The original packet deadline stays unchanged.
+                assert page.locator('#tx-progress').inner_text() == ''
+                assert page.evaluate('''() => Array.from(document.querySelector('#tx').getContext('2d')
+                  .getImageData(10,10,1,1).data)''') == [128,128,128,255]
+                page.wait_for_function('() => window.sentFrames.length > 0', timeout=4000)
+                assert page.evaluate('() => window.counts') == ['③', '②', '①', 'Start']
+                countdown_ms = page.evaluate('() => firstSymbolAt - countTimes[0]')
+                assert 2950 <= countdown_ms <= 3500, countdown_ms
                 started = monotonic()
                 page.wait_for_function("() => document.querySelector('#status').textContent === 'Transmission finished'",
                     timeout=expected['seconds'] * 1000 + 2000)
@@ -197,7 +427,7 @@ def screen_transmission(p, url, report):
                 assert not errors, errors
                 report.append({'sender': [engine.name, mode], 'symbols': len(frames), 'rate': 2,
                     'expectedSeconds': expected['seconds'], 'elapsedSeconds': round(elapsed, 3),
-                    'allPixelsMatch': True, 'finished': True})
+                    'countdownSeconds': round(countdown_ms/1000, 3), 'allPixelsMatch': True, 'finished': True})
                 print('sender', engine.name, mode, len(frames), 'PASS', round(elapsed, 3), flush=True)
                 context.close()
         finally:
@@ -205,13 +435,28 @@ def screen_transmission(p, url, report):
 
 
 def transmission(p, url, report, capture):
-    for mode in ['mono', 'color']:
+    for mode in ['mono', 'color', 'bicolor']:
         file = movie(mode)
         for role in ['offline', 'receive']:
             args = [] if role == 'offline' else ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
                 '--use-file-for-fake-video-capture=' + str(OUT / f'{mode}-2.y4m')]
             browser = p.chromium.launch(args=args)
             context = browser.new_context(viewport={'width': 1280, 'height': 1000})
+            trace_receiver(context)
+            if capture and role == 'receive':
+                # Name the synthetic fixture explicitly instead of publishing its local file path.
+                context.add_init_script('''const list = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+                  navigator.mediaDevices.enumerateDevices = async () => (await list()).map(device => ({
+                    kind:device.kind,deviceId:device.deviceId,groupId:device.groupId,
+                    label:device.kind === 'videoinput' ? 'Synthetic video camera' : device.label}));
+                  const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+                  navigator.mediaDevices.getUserMedia = async constraints => {
+                    const stream = await open(constraints);
+                    for (const track of stream.getVideoTracks()) {
+                      Object.defineProperty(track,'label',{value:'Synthetic video camera'});
+                    }
+                    return stream;
+                  };''')
             page = context.new_page()
             errors = errors_for(page)
             page.goto(url + '?lang=en')
@@ -221,13 +466,21 @@ def transmission(p, url, report, capture):
                 page.set_input_files('#video-input', str(file))
                 page.fill('#expected', 'LIGHT')
             page.click('#start')
-            page.wait_for_function("() => document.querySelector('#live').textContent.length >= 2", timeout=25000)
+            try:
+                page.wait_for_function("() => document.querySelector('#live').textContent.length >= 2", timeout=25000)
+            except Exception:
+                save_receiver_trace(page, f'{mode}-{role}')
+                raise
             if capture and role == 'receive' and mode == 'mono':
+                assert 'Synthetic video camera' in page.locator('#camera-details').inner_text()
                 screenshot(page, 'receive', 'en', '#receiver')
                 page.click('#language')
                 screenshot(page, 'receive', 'ja', '#receiver')
                 page.click('#language')
-            page.wait_for_function("() => document.querySelector('#crc').textContent === 'Pass'", timeout=25000)
+            try:
+                page.wait_for_function("() => document.querySelector('#crc').textContent === 'Pass'", timeout=25000)
+            finally:
+                save_receiver_trace(page, f'{mode}-{role}')
             assert page.locator('#result-text').inner_text() == 'LIGHT'
             assert page.locator('#agreement-field').is_visible() == (role == 'offline')
             assert page.evaluate("() => document.querySelector('#source').srcObject === null")
@@ -259,7 +512,7 @@ def transmission(p, url, report, capture):
                         page.click('#language')
                     page.select_option('#role', 'send')
                     page.click('#start')
-                    assert page.locator('#tx-progress').inner_text()
+                    page.wait_for_function("() => document.querySelector('#tx-progress').textContent.length > 0", timeout=4000)
                     screenshot(page, 'send', language, 'section:has(#role),#transmitter')
                     page.click('#stop')
             assert not errors, errors
@@ -343,6 +596,8 @@ def main():
         with sync_playwright() as p:
             interface(p, urls, report)
             print('UI PASS', len(report), flush=True)
+            camera_adapter(p, url, report)
+            camera_ui(p, url, report)
             screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)

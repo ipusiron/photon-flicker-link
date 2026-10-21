@@ -22,19 +22,26 @@
       idle();
       if (notify) onStop(reason);
     }
-    function start(text, settings, onFrame = () => {}, stopped = () => {}) {
+    function start(text, settings, onFrame = () => {}, stopped = () => {}, preparation = {}) {
       stop();
       const tx = core.transmission(text, settings);
       if (host.document.hidden) throw new Error('hidden');
       onStop = stopped;
       active = true;
-      const began = host.performance.now();
-      let last = -1;
+      const requested = host.performance.now(), countdown = preparation.countdown === 3 ? 3 : 0;
+      let began = countdown ? null : requested, last = -1, lastCount = null;
       hidden = () => { if (host.document.hidden) stop('hidden'); };
       host.document.addEventListener('visibilitychange', hidden);
-      timer = host.setTimeout(() => stop('timeout'), Math.min(core.RECEIVE_SECONDS, tx.seconds + 1) * 1000);
+      timer = host.setTimeout(() => stop('timeout'), Math.min(core.RECEIVE_SECONDS, tx.seconds + countdown + 1) * 1000);
       function draw(now) {
         if (!active) return;
+        if (began === null) {
+          const remaining = Math.max(0, countdown - Math.floor(Math.max(0, now - requested) / 1000));
+          if (remaining !== lastCount) { lastCount = remaining; preparation.onCountdown?.(remaining); }
+          if (remaining) { id = host.requestAnimationFrame(draw); return; }
+          // Begin at the first actual frame after the countdown, never skip the preamble.
+          began = now;
+        }
         // The first rAF timestamp can precede Start within the same display frame.
         // Keep symbol zero until the elapsed time reaches the first full period.
         const index = Math.floor(Math.max(0, now - began) / (settings.period * 1000));
@@ -50,7 +57,7 @@
         }
         id = host.requestAnimationFrame(draw);
       }
-      draw(began);
+      draw(requested);
       return tx.seconds;
     }
     idle();
