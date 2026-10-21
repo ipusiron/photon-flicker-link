@@ -151,6 +151,59 @@ def interface(p, urls, report):
             browser.close()
 
 
+def screen_transmission(p, url, report):
+    for engine in [p.chromium, p.firefox]:
+        browser = engine.launch()
+        try:
+            for mode in ['mono', 'color']:
+                context = browser.new_context(reduced_motion='no-preference')
+                page = context.new_page()
+                errors = errors_for(page)
+                page.goto(url + '?lang=en')
+                page.select_option('#mode', mode)
+                assert page.locator('#rate').input_value() == '2'
+                expected = page.evaluate('''() => PhotonCodec.transmission('LIGHT',
+                  PhotonCodec.config({mode:document.querySelector('#mode').value}))''')
+                # Read the canvas after each UI progress update, including the synchronous first symbol.
+                page.evaluate('''() => {
+                  window.sentFrames = [];
+                  const progress = document.querySelector('#tx-progress');
+                  const ctx = document.querySelector('#tx').getContext('2d');
+                  let last = 0;
+                  new MutationObserver(() => {
+                    const match = progress.textContent.match(/·\s*(\d+)\s*\/\s*(\d+)/);
+                    if (!match || Number(match[1]) === last) return;
+                    last = Number(match[1]);
+                    window.sentFrames.push({index:last-1,
+                      srgb:Array.from(ctx.getImageData(10,10,1,1).data).slice(0,3)});
+                  }).observe(progress, {childList:true,subtree:true,characterData:true});
+                }''')
+                page.click('#start')
+                if mode == 'color':
+                    assert page.locator('#warning-dialog').is_visible()
+                    page.click('#warning-accept')
+                started = monotonic()
+                page.wait_for_function("() => document.querySelector('#status').textContent === 'Transmission finished'",
+                    timeout=expected['seconds'] * 1000 + 2000)
+                elapsed = monotonic() - started
+                frames = page.evaluate('() => window.sentFrames')
+                assert frames == [{'index': i, 'srgb': frame['srgb']}
+                    for i, frame in enumerate(expected['frames'])], frames
+                assert page.evaluate('''() => Array.from(document.querySelector('#tx').getContext('2d')
+                  .getImageData(10,10,1,1).data)''') == [128, 128, 128, 255]
+                assert page.locator('#start').is_enabled()
+                assert page.locator('#stop').is_disabled()
+                assert not page.locator('#error').inner_text()
+                assert not errors, errors
+                report.append({'sender': [engine.name, mode], 'symbols': len(frames), 'rate': 2,
+                    'expectedSeconds': expected['seconds'], 'elapsedSeconds': round(elapsed, 3),
+                    'allPixelsMatch': True, 'finished': True})
+                print('sender', engine.name, mode, len(frames), 'PASS', round(elapsed, 3), flush=True)
+                context.close()
+        finally:
+            browser.close()
+
+
 def transmission(p, url, report, capture):
     for mode in ['mono', 'color']:
         file = movie(mode)
@@ -290,6 +343,7 @@ def main():
         with sync_playwright() as p:
             interface(p, urls, report)
             print('UI PASS', len(report), flush=True)
+            screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)
     finally:

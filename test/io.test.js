@@ -86,6 +86,22 @@ test('A blocked display scheduler cannot skip symbols silently', () => {
   f.tick(1100);
   assert.deepEqual(stops, ['displayStalled']);
 });
+test('A first animation timestamp before Start keeps symbol zero and still completes', () => {
+  const f = fixture(), frames = [], stops = [];
+  const screen = Screen.create(f.canvas, f.host);
+  const tx = C.transmission('LIGHT');
+  screen.start('LIGHT', C.config(), frame => frames.push(frame.srgb), reason => stops.push(reason));
+  f.tick(-3.54);
+  f.tick(0);
+  f.tick(499);
+  assert.equal(frames.length, 1);
+  assert.equal(screen.active, true);
+  for (let i = 1; i <= tx.frames.length; i++) f.tick(i * 500);
+  assert.deepEqual(frames, tx.frames.map(frame => frame.srgb));
+  assert.deepEqual(stops, ['sent']);
+  assert.equal(screen.active, false);
+  assert.equal(f.drawn.at(-1), 'rgb(128,128,128)');
+});
 test('Both IO paths have a hard timeout', () => {
   const f = fixture(), stops = [];
   const screen = Screen.create(f.canvas, f.host);

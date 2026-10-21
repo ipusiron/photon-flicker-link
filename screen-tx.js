@@ -35,7 +35,9 @@
       timer = host.setTimeout(() => stop('timeout'), Math.min(core.RECEIVE_SECONDS, tx.seconds + 1) * 1000);
       function draw(now) {
         if (!active) return;
-        const index = Math.floor((now - began) / (settings.period * 1000));
+        // The first rAF timestamp can precede Start within the same display frame.
+        // Keep symbol zero until the elapsed time reaches the first full period.
+        const index = Math.floor(Math.max(0, now - began) / (settings.period * 1000));
         if (index >= tx.frames.length) { stop('sent'); return; }
         // Skipping a symbol makes the packet invalid: stop visibly instead of emitting a shortened frame.
         if (index > last + 1) { stop('displayStalled'); return; }
