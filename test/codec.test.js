@@ -143,6 +143,62 @@ test('Configuration and duration bounds', () => {
   for (const options of [{ mode: 'x' }, { rate: 60 }, { levels: 3 }, { contrast: 'x' }]) assert.throws(() => C.config(options));
 });
 
+test('Two-color binary wire format, duration and known blue/red endpoints', () => {
+  const cfg = C.config({ mode: 'bicolor' });
+  assert.equal(cfg.bits, 1);
+  assert.equal(C.duration(8, cfg), 51);
+  assert.throws(() => C.config({ mode: 'bicolor', levels: 4 }));
+  const tx = C.transmission('A', cfg);
+  assert.deepEqual(tx.frames[0].rgb, [0.06, 0.06, 0.32]);
+  assert.deepEqual(tx.frames[2].rgb, [0.32, 0.06, 0.06]);
+  const bytes = Array.from({ length: 256 }, (_, i) => i);
+  assert.deepEqual(C.symbolsToBytes(C.bytesToSymbols(bytes, cfg), cfg), bytes);
+  for (const text of ['', 'LIGHT', '日本', '🔦', '12345678']) {
+    for (const rate of [2, 4, 8]) {
+      const { result } = synthetic(text, { mode: 'bicolor', rate });
+      assert.equal(result?.valid, true, text + '/' + rate);
+      assert.equal(result.text, text);
+    }
+  }
+});
+
+test('Two-color ratio survives common gain changes and fixed channel imbalance after 8-bit capture', () => {
+  const cfg = C.config({ mode: 'bicolor' });
+  const { samples } = synthetic('LIGHT', { mode: 'bicolor' }, { fps: 30, clock: 1.025, offset: 0.531, drop: 29 });
+  for (const base of [0.08, 0.15, 0.6, 1]) {
+    const decoder = C.createDecoder(cfg);
+    const events = samples.flatMap(({ time, rgb }, n) => {
+      const gain = base * (1 + 0.5 * Math.sin(time * 2));
+      const observed = rgb.map((v, c) => C.srgbToLinear(C.linearToSrgb(
+        v * gain * [1.2, 0.9, 0.8][c] + 0.0005 + 0.0001 * Math.sin(n * 5.17 + c))));
+      return decoder.push(time, observed);
+    });
+    const result = events.find(event => event.type === 'result');
+    assert.equal(result?.valid, true, String(base));
+    assert.equal(result.text, 'LIGHT');
+  }
+  // Preserve the existing mono detection floor; do not turn faint noise into a valid packet.
+  assert.equal(synthetic('LIGHT', {}, { gain: 0.15 }).result, undefined);
+});
+
+test('Two-color ambiguous symbols and clipped or flat light are not accepted as valid', () => {
+  const bad = synthetic('A', { mode: 'bicolor' }, { ambiguous: C.PREAMBLE.length + 10 }).result;
+  assert.equal(bad?.valid, false);
+  assert.ok(bad.uncertain.length > 0);
+  for (const rgb of [[1, 1, 1], [0, 0, 0], [0.3, 0.1, 0.2]]) {
+    const decoder = C.createDecoder(C.config({ mode: 'bicolor' }));
+    const events = Array.from({ length: 1200 }, (_, i) => decoder.push(i / 30, rgb)).flat();
+    assert.equal(events.some(event => event.type === 'result'), false);
+    assert.equal(decoder.finish()[0].code, 'noPreamble');
+  }
+});
+
+test('Region health distinguishes near-white, near-black and single-channel clipping', () => {
+  assert.deepEqual(C.pixelHealth([255, 255, 255, 255, 0, 0, 0, 255, 255, 40, 40, 255, 120, 120, 120, 255]),
+    { white: 0.25, dark: 0.25, clipped: 0.5 });
+  assert.throws(() => C.pixelHealth([]));
+});
+
 module.exports = { synthetic };
 
 test('Published synthetic comparison reproduces all 216 fixed conditions', () => {

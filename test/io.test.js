@@ -161,6 +161,31 @@ test('A blocked display scheduler cannot skip symbols silently', () => {
   f.tick(1100);
   assert.deepEqual(stops, ['displayStalled']);
 });
+
+test('Three-second preparation keeps a still canvas, emits the full packet and can be cancelled', () => {
+  const f = fixture(), frames = [], counts = [], stops = [];
+  const screen = Screen.create(f.canvas, f.host), cfg = C.config();
+  const preparation = { countdown: 3, onCountdown: value => counts.push(value) };
+  screen.start('A', cfg, frame => frames.push(frame.index), reason => stops.push(reason), preparation);
+  assert.deepEqual(counts, [3]);
+  for (const time of [-3.54, 999, 1000, 1999, 2000, 2999]) f.tick(time);
+  assert.deepEqual(counts, [3, 2, 1]);
+  assert.equal(frames.length, 0);
+  assert.ok(f.drawn.every(value => value === 'rgb(128,128,128)'));
+  f.tick(3000);
+  assert.deepEqual(counts, [3, 2, 1, 0]);
+  const tx = C.transmission('A', cfg);
+  for (let i = 1; i <= tx.frames.length; i++) f.tick(3000 + i * 500);
+  assert.deepEqual(frames, tx.frames.map(frame => frame.index));
+  assert.deepEqual(stops, ['sent']);
+  screen.start('A', cfg, () => assert.fail('must not transmit after stop'), () => {}, preparation);
+  screen.stop(); f.tick(3000);
+  assert.equal(screen.active, false);
+  screen.start('A', cfg, () => assert.fail('must not transmit while hidden'), reason => stops.push(reason), preparation);
+  f.host.document.hidden = true; f.host.document.dispatchEvent(new Event('visibilitychange'));
+  f.tick(3000);
+  assert.equal(stops.at(-1), 'hidden');
+});
 test('A first animation timestamp before Start keeps symbol zero and still completes', () => {
   const f = fixture(), frames = [], stops = [];
   const screen = Screen.create(f.canvas, f.host);

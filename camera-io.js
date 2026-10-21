@@ -171,8 +171,9 @@
               const x = Math.floor(rect.x * canvas.width), y = Math.floor(rect.y * canvas.height);
               const w = Math.max(1, Math.min(canvas.width - x, Math.floor(rect.w * canvas.width)));
               const h = Math.max(1, Math.min(canvas.height - y, Math.floor(rect.h * canvas.height)));
-              const rgb = core.averageRGBA(ctx.getImageData(x, y, w, h).data);
-              options.onFrame({ time, rgb, stats: { ...stats }, rect });
+              const pixels = ctx.getImageData(x, y, w, h).data;
+              const rgb = core.averageRGBA(pixels);
+              options.onFrame({ time, rgb, health: core.pixelHealth(pixels), stats: { ...stats }, rect });
             } catch (_) { stop('sampleError'); return; }
           }
           if (ticket === generation && active) schedule();
