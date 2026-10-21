@@ -144,3 +144,25 @@ test('Configuration and duration bounds', () => {
 });
 
 module.exports = { synthetic };
+
+test('Published synthetic comparison reproduces all 216 fixed conditions', () => {
+  const report = require('../docs/measurements.json');
+  assert.equal(report.rows.length, 4);
+  for (const expected of report.rows) {
+    const { mode, levels } = expected;
+    let valid = 0, wrongValid = 0, total = 0;
+    for (const fps of report.fps) for (const rate of report.rate) {
+      for (const clock of report.clock) for (const offset of report.offset) {
+        const noise = { fps, clock, offset, gain: report.gain, background: report.background,
+          jitter: report.jitterAmplitude, smoothing: report.smoothing, drop: report.dropEvery };
+        if (mode === 'color') noise.matrix = [[0.8, 0.12, 0.08], [0.09, 0.75, 0.16], [0.05, 0.2, 0.75]];
+        const { result } = synthetic(report.text, { mode, levels, rate }, noise);
+        total++;
+        if (result?.valid && result.text === report.text) valid++;
+        if (result?.valid && result.text !== report.text) wrongValid++;
+      }
+    }
+    assert.equal(total, 54);
+    assert.deepEqual({ mode, levels, valid, total, wrongValid }, expected);
+  }
+});

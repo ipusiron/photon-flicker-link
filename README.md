@@ -1,8 +1,253 @@
-# Photon Flicker Link - 光で短文を渡す教材
+<!--
+---
+id: day122
+slug: photon-flicker-link
+
+title: "Photon Flicker Link"
+
+subtitle_ja: "光で短文を送り、カメラとグラフで通信を観察"
+subtitle_en: "Send short text through light and observe the camera signal"
+
+description_ja: "画面の明滅をカメラで読み取り、最大8バイトの文字列へ復元する教材。モノクロ・RGB並列変調、時系列グラフ、ライブ復号、ローカル動画の解析に対応します。"
+description_en: "A local optical communication lesson with binary monochrome and RGB signaling, camera traces, live decoding, CRC-8 and offline video analysis, for up to 8 UTF-8 bytes."
+
+category_ja:
+  - プライバシー
+  - 光学監視
+category_en:
+  - Privacy
+  - Optical Surveillance
+
+difficulty: 2
+
+tags:
+  - optical-channel
+  - visible-light-communication
+  - air-gap
+  - camera
+  - signal-processing
+
+repo_url: "https://github.com/ipusiron/photon-flicker-link"
+demo_url: "https://ipusiron.github.io/photon-flicker-link/"
+
+hub: true
+---
+-->
+
+# Photon Flicker Link - 光で短文を送り、通信路を可視化
+
+![GitHub Repo stars](https://img.shields.io/github/stars/ipusiron/photon-flicker-link?style=social)
+![GitHub forks](https://img.shields.io/github/forks/ipusiron/photon-flicker-link?style=social)
+![GitHub last commit](https://img.shields.io/github/last-commit/ipusiron/photon-flicker-link)
+![GitHub license](https://img.shields.io/github/license/ipusiron/photon-flicker-link)
+[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-blue?logo=github)](https://ipusiron.github.io/photon-flicker-link/)
 
 **Day122 - 生成AIで作るセキュリティツール200**
 
-画面の明滅をカメラで読み取り、短い文字列へ復元する教材を開発しています。
-モノクロとカラーの送受信、動画のオフライン復号、時系列グラフを実装予定です。
+画面の明滅をカメラで読み取り、短い文字列へ戻す教材です。測定枠の映像、輝度・色の時系列グラフ、1文字ずつ戻る復号結果を並べ、通信の成立と失敗を観察できます。
 
-MIT License © 2026 IPUSIRON
+[English](README.en.md) | 日本語
+
+## 🌐 デモページ
+
+👉 **[Photon Flicker Linkを開く](https://ipusiron.github.io/photon-flicker-link/)**
+
+インストール不要です。初期設定はモノクロ2値・2 symbol/s・低コントラスト、本文はUTF-8で最大8バイトです。
+
+## 📸 スクリーンショット
+
+> ![送信中の入力欄と発光面](assets/send.png)
+>
+> *「LIGHT」をモノクロで送信中。送信は1回で終了します。*
+
+> ![カメラ映像と測定枠と時系列グラフ](assets/receive.png)
+>
+> *合成動画を仮想カメラから受信し、途中の「LI」を復元した状態です。実機撮影ではありません。*
+
+> ![LIGHTの復号結果とCRC成功](assets/result.png)
+>
+> *オフライン動画から「LIGHT」を復元し、CRC・終了マーカー・UTF-8が成功した状態です。*
+
+> ![座学の明滅からQRへの密度比較](assets/lesson.png)
+>
+> *8節の座学に表と一次資料へのリンクを掲載しています。*
+
+## 📖 使い方
+
+点滅は光過敏性発作（PSE）や体調不良の原因になり得ます。周囲の人にも配慮し、不調を感じたら停止してください。低速・低コントラストでも安全を保証するものではありません。作者は悪用を勧めません。
+
+1. 2台でデモを開き、どちらも「モノクロ」にする。画面の明るさを抑え、反射を避ける。
+2. 受信側を「受けるだけ」にして開始し、カメラを許可する。送信画面の発光面の内側だけが測定枠に入るよう、端末を固定する。
+3. 送信側を「送るだけ」にし、まず`A`を入力して開始する。初期設定で23秒。受信側を先に開始し、60秒の受信制限内に送信を終える。
+4. ライブ文字とグラフを観察する。最後にCRCと終了マーカー・UTF-8を確認する。不成功の文字列は未確認として扱う。
+5. 「停止」で中断する。「表示を消去」で結果と測定値を消す。
+
+カラーを試すときは両側をカラーにします。先頭の較正を含めて受信してください。速い設定、カラー、高コントラスト、動きを減らす設定での送信には確認ダイアログがあります。全画面表示や自動再送はありません。タブが隠れると停止し、自動再開しません。
+
+1台で確認する場合は「オフライン復号」で、本ツールの送信を記録した動画を選びます。ブラウザーで再生できるMP4・WebMなど、128MiB以下・60秒以下が対象です。正解の文字列を入力した場合に限り、文字の一致率と誤り率を表示します。一般の動画から文章を抽出する機能ではありません。本ツールには録画機能がありません。
+
+## ✨ 機能と判定の読み方
+
+| 項目 | 内容 |
+|---|---|
+| 役割 | 送るだけ／受けるだけ／オフライン復号の3種類 |
+| モノクロ | 2段階の輝度で1 bit/symbol |
+| カラー | RGBそれぞれ2値、計3 bit/symbol。黒基準とRGBの較正付き |
+| 測定枠 | ドラッグまたは4本のスライダーで指定。変更時は同期を再取得 |
+| グラフ | 線形化した輝度、または較正後RGB。しきい値・判定位置を表示。線種でも区別 |
+| 確信度 | 分類境界からの距離に基づく目安。正解の確率ではない |
+| `?` | 確信度不足、または取得できなかったシンボルを含む文字 |
+| CRC-8 | 伝送中の誤りを調べる。暗号化・送信者認証・誤り訂正ではない |
+| 一致率 | オフラインで正解があるときだけ、同じ位置のUnicode文字の一致数÷長い方の文字数 |
+| 環境表示 | 採取fps、rVFC/rAF、解像度、露出・WB固定のAPI報告、推定周期 |
+
+露出は手動モードの要求後に露出時間を要求し、ホワイトバランス（WB）は別に要求します。非対応や拒否でも解析を続け、状態を表示します。プリアンブルの振幅正規化で一部の明るさ変化に対応しますが、自動調整の影響をすべて除去できるわけではありません。
+
+## 🔬 転送速度の限界と密度
+
+カメラのフレームレートが速度を制限します。1シンボルに複数のフレームが必要で、本ツールは同期時に2 frame/symbol未満を拒否します。30fpsならシンボルレート15 symbol/s以下が必要条件であり、十分条件ではありません。露出時間、フレーム欠落、画面更新との位相差、距離、環境光、露出・WBの自動調整でさらに条件が厳しくなります。
+
+カメラで画面全体の明滅を1チャネルとして読む方式は、モノクロで数bps〜数十bps級の設計になります。本実装の選択肢は2/4/8 symbol/sなので、生レートはモノクロ2〜8 bit/s、カラー6〜24 bit/sです。高速フォトダイオードやローリングシャッターの縞を読む方式の限界を表すものではありません。
+
+次表は最大8バイトを送る計算値です。モノクロは`mono`、カラーは`color`と表記します。実効速度は本文64ビット÷送信時間で、プリアンブル・長さ・CRC・終了マーカー・色較正を含みます。実機の測定値ではありません。
+
+| モード | symbol/s | 生レート(bit/s) | 8バイトの時間(s) | 本文の実効速度(bit/s) |
+|---|---:|---:|---:|---:|
+| mono | 2 | 2 | 51 | 1.25 |
+| mono | 4 | 4 | 25.5 | 2.51 |
+| mono | 8 | 8 | 12.75 | 5.02 |
+| color | 2 | 6 | 28.5 | 2.25 |
+| color | 4 | 12 | 14.25 | 4.49 |
+| color | 8 | 24 | 7.125 | 8.98 |
+
+カラーは較正分の時間があるため、短文の所要時間はモノクロの単純な3分の1にはなりません。4段PAMは純関数の比較試験だけに残し、UIには公開していません。[合成条件の比較値](docs/measurements.json)は実機成功率ではありません。
+
+密度を増やす方法には、時間だけでなく空間を使う選択もあります。モノクロは1シンボル1ビット、RGB並列は3ビットですが、QR Version 1-Lは1枚で最大17バイト＝136ビット（バイトモード）を格納できます。QRは位置検出用パターン、Version 2以降のアライメントパターン、Reed-Solomon訂正を使います。L/M/Q/Hの約7/15/25/30%は符号語に対する復元の目安で、画像の同じ面積が必ず復元できる意味ではありません。実用の画面間転送では2次元の密度が有利です。[DENSO WAVEの容量表](https://www.qrcode.com/en/about/version.html)・[誤り訂正](https://www.qrcode.com/en/about/error_correction.html)
+
+## 🔄 他のエアギャップ通信との比較
+
+研究ごとに送受信機と条件が異なります。距離は実験室条件・直視・特定機材などに依存し、本ツールの性能を示しません。`B/s`はバイト/秒、`bit/s`はビット/秒です。対策欄は経路を制限する例であり、それだけで防止を保証しません。
+
+| 方式 | 経路・受信機 | 報告された帯域 | 報告された距離 | 経路を制限する例・出典 |
+|---|---|---|---|---|
+| Photon Flicker Link | 画面→カメラ | mono 2〜8 bit/s、color 6〜24 bit/s（生レート） | 本人確認待ち | 遮光・画面とカメラの配置管理。本実装の計算値 |
+| LED-it-GO | HDD LED→フォトダイオード／カメラ | 4000 bit/s／15〜120 bit/s | 光センサー：室内3〜5m・夜間屋外20m。カメラ：8m | LEDの遮光・視線の遮断。[論文](https://arxiv.org/abs/1702.06715) |
+| 音響（Day120 / ggwave参考） | スピーカー→マイク | ggwave：8〜16 B/s。Day120：1.25〜11.08 B/s（256バイト計算値） | ggwave：約1m（開発者談）。Day120：未測定 | 音響経路・マイクの管理。[ggwave](https://github.com/ggerganov/ggwave#details)・[Day120](https://github.com/ipusiron/airborne-tone-link) |
+| MAGNETO / ODINI | CPU磁界→スマホ磁力計／専用磁気センサー | 0.2〜5 bit/s／40 bit/s | 0〜12cm／100〜150cm | 距離・磁気センサーの管理。[MAGNETO論文](https://arxiv.org/abs/1802.02317)。ODINI値は同論文の表経由、原論文未確認 |
+| BitWhisper | 発熱→別のPCの温度センサー | 1〜8 bit/hour | 0〜40cm、双方向 | 端末間隔・温度変化の管理。[論文](https://arxiv.org/abs/1503.07919) |
+| AirHopper | ビデオカード→FM受信携帯 | 13〜60 B/s | 1〜7m | 電磁遮蔽・受信機の管理。[研究機関](https://cyber.bgu.ac.il/how-leak-sensitive-data-isolated-computer-air-gap-near-mobile-phone-airhopper/) |
+| PowerHammer | 電力線の電流変動→電流プローブ | line-level：約1000 bit/s、phase-level：約10 bit/s | 配電線のタップ位置に依存 | 電力線側の監視・フィルター。[論文](https://arxiv.org/abs/1804.04014) |
+
+光では監視カメラを受信機にする研究もあります。[aIR-Jumper](https://arxiv.org/abs/1709.05742)は赤外線と監視カメラの例です。可視光を透過するガラスならガラス越しの受光が可能ですが、反射・着色・遮光膜の影響を受けます。近接熱通信とは必要な配置や応答時間が異なり、熱の伝わり方を一律に扱うことはできません。
+
+見通し（LOS）と光学系を確保すると望遠で離れた発光体を観察できます。ただしLED-it-GOの夜間屋外20mは光センサーの値で、カメラの値と分けて読む必要があります。光は音響ノイズの直接の影響を受けにくい一方、太陽光・照明の100/120Hzフリッカー・反射・別の発光が雑音になります。
+
+## 🎯 ユースケース
+
+このツールならではの使い方
+
+- 情報教育の授業で、`A`（1バイト・23秒）、`LIGHT`（5バイト・39秒）、`日本`（6バイト・43秒）を比較し、「文字数」と「UTF-8のバイト数」が転送時間に与える差を調べる。すべてモノクロ・2 symbol/sでの計算値である。
+- 通信設計の学習で、8バイトのモノクロ51秒とカラー28.5秒を比較し、並列化の利得から較正のコストを読み取る。実際の成功率は色の分離や環境光にも依存する。
+- 映像制作の担当者が、同じ動画の測定枠を発光面の内側と背景込みで変え、しきい値と確信度の変化を観察する。RGB値はカメラ画像の相対値で、照度計や測色計の代用ではない。
+- 謎解きの制作者が、短い合図`LIGHT`を送って復号過程を見せる。暗号化がないため、方式を知る人は復元でき、秘密の合言葉の保護にはならない。
+
+一般的な学習・制作での利用
+
+- 家庭や工作会で、受信開始、端末の固定、停止を分担し、離れた端末に文字を渡す実験を行う。周囲の人の同意と点滅への配慮が必要である。
+- 研究の予備実験で、同じ短文を距離・照明・端末を変えて受信し、条件とCRC結果を別途記録する。本ツールは動画や受信結果を自動保存しない。
+- Day120の音響経路、Day041の音の帯域観察と組み合わせ、媒体ごとに受信条件が異なることを学ぶ。光の信号をDay041で測ることはできない。
+
+## 🔗 書籍・関連ツール
+
+本ツールは『エアギャップ・ブリッジ』で扱う通信経路を、自分で観察するための実習環境です。次の章の案内と併せて利用できます。
+
+- [『エアギャップ・ブリッジ 隔離環境のデータ出力技法』](https://akademeia.info/?page_id=53554)：第2章「エアギャップとは何か」
+- [『エアギャップ・ブリッジ 隔離環境のデータ入力技法』](https://akademeia.info/?page_id=53563)：第9章「将来展望」
+- [Day120 Airborne Tone Link](https://ipusiron.github.io/airborne-tone-link/)：音で短文を渡す教材
+- [Day041 Mic Gain Logger](https://ipusiron.github.io/mic-gain-logger/)：音の帯域や入力レベルの観察
+
+座学では[LED-it-GO](https://arxiv.org/abs/1702.06715)、[xLED](https://arxiv.org/abs/1706.01140)、[CTRL-ALT-LED](https://arxiv.org/abs/1907.05851)、[aIR-Jumper](https://arxiv.org/abs/1709.05742)も案内します。発光を情報に変える原理は共通ですが、発光体の大きさ、波長、駆動速度、受光のしやすさは異なります。本ツールはこれらの機器を制御しません。
+
+## 🔒 データと安全対策
+
+映像はフレームごとにcanvasで処理し、録画しません。選んだ動画のblob URLは停止・完了時に解放します。文字列・グラフはページ内のメモリーにだけ残り、「表示を消去」またはページを閉じると消えます。localStorageに保存するのは言語と明暗だけです。
+
+アプリの解析処理は外部通信を行いません。CSPは`connect-src 'none'`を維持し、ローカル動画用に`media-src 'self' blob:`を指定しています。インラインスクリプト・style属性・外部ライブラリーを使いません。公開ページの初回取得と、自分で開いた外部リンクの通信は別です。
+
+暗号化がないため、方式を知る受信者は内容を復元できます。covert channelが隠そうとするのは通信の存在や媒体であり、内容の秘匿を保証するものではありません。本ツールの低速の点滅も、人に気づかれないとは限りません。
+
+GitHub Pagesでは任意のHTTPヘッダーを設定できず、X-Frame-OptionsとCSPのframe-ancestorsはmetaでは適用できません。
+
+## 🧪 テストと検証範囲
+
+Node.js 22以上で、依存パッケージを追加せず実行できます。
+
+```sh
+npm test
+```
+
+変換・CRC・既知解答・同期・クロック差・混色較正・低確信度・中断処理・日英辞書・CSP・配色・READMEの数値と画像を検査します。GitHub Actionsはpushとpull_requestで構文検査と同じテストを実行します。
+
+既存のPython PlaywrightとFFmpegがある開発環境では、`python -X utf8 test/browser.py`でHTTP/fileのUI、仮想カメラ、動画、rAF、非表示停止、権限拒否を検査できます。`--screenshots`でREADME画像を撮影し、`--url https://ipusiron.github.io/photon-flicker-link/`で公開ページを検査します。
+
+モノクロ・カラーの仮想カメラと動画から`LIGHT`を復元し、rAFでもCRC成功を確認しています。[公開用検証記録](docs/verification.md)に採取値と限界を記載しています。**2台の実機、距離、環境光、端末差、露出・WB固定の実効は本人確認待ちです。**
+
+## 📁 ディレクトリー構造
+
+```text
+photon-flicker-link/          # プロジェクト
+├── .gitattributes           # テキスト改行とPNGの扱い
+├── .gitignore               # 作業用データの除外
+├── .github/                 # GitHub設定
+│   └── workflows/           # 自動検証
+│       └── test.yml         # Node 22のCI
+├── index.html               # 1枚の画面とCSP
+├── style.css                # 明暗・レスポンシブ表示
+├── codec-core.js            # 符号化・較正・同期復調の純関数
+├── camera-io.js             # カメラ・動画・フレーム採取
+├── screen-tx.js             # 有限回の画面送信
+├── app.js                   # DOM・グラフ・役割の制御
+├── messages.js              # 日英文言と8節の座学
+├── package.json             # 依存なしのテスト設定
+├── README.md                # 日本語の説明
+├── README.en.md             # 英語の説明
+├── CLAUDE.md                # 開発時の規則
+├── LICENSE                  # MIT License
+├── assets/                  # 日本語の画面画像
+│   ├── send.png             # 送信中
+│   ├── receive.png          # カメラと時系列
+│   ├── result.png           # 復号結果
+│   ├── lesson.png           # 座学
+│   └── en/                  # 英語の画面画像
+│       ├── send.png         # 送信中
+│       ├── receive.png      # カメラと時系列
+│       ├── result.png       # 復号結果
+│       └── lesson.png       # 座学
+├── docs/                    # 検証資料
+│   ├── measurements.json    # 合成条件の比較値
+│   └── verification.md      # 検証結果と本人確認項目
+└── test/                    # 自動検証
+    ├── codec.test.js        # 純関数と合成条件
+    ├── io.test.js           # 入出力の寿命と中断
+    ├── structure.test.js    # HTML・CSP・日英・配色
+    ├── readme.test.js       # 数値・メタデータ・画像・構成
+    └── browser.py           # ブラウザーと仮想カメラの検証
+```
+
+## 💻 動作環境
+
+JavaScriptとCanvasを使うブラウザーが必要です。送信・座学・オフライン復号のUIは`index.html`を直接開いても動作します。カメラはHTTPSまたはlocalhostで利用し、ブラウザーの許可が必要です。ローカルHTTPは`python -m http.server 8000 --bind 127.0.0.1`で起動できます。
+
+rVFCがあれば動画フレームの時刻を使い、なければrAFで採取します。rAFの時刻とfpsは近似値で、rVFCと同じ精度を保証しません。カメラ・コーデック・露出/WBの対応状況は端末ごとに異なります。ChromiumとFirefoxでUIを検証し、動画・仮想カメラの通し検証はChromiumで実施しています。Safari実機は未検証です。
+
+## 📄 ライセンス
+
+- ソースコード：MIT License。詳細は[LICENSE](LICENSE)を参照
+- 実行時・npm開発依存：なし
+- スクリーンショット：本ツールの画面と合成入力を使用
+
+## 🛠️ このツールについて
+
+本ツールは、「生成AIで作るセキュリティツール200」プロジェクトの一環として開発されました。このプロジェクトでは、AIの支援を活用しながら、セキュリティに関連するさまざまなツールを100日間にわたり制作・公開していく取り組みを行っています。
+
+[プロジェクトの詳細と他のツール](https://akademeia.info/?page_id=44607)

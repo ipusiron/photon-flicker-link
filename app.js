@@ -218,7 +218,8 @@
       ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
       ctx.setLineDash([]);
     } else {
-      ctx.fillStyle = css.getPropertyValue('--muted'); ctx.font = '22px system-ui';
+      const scale = preview.width / (preview.clientWidth || preview.width);
+      ctx.fillStyle = css.getPropertyValue('--muted'); ctx.font = `${14 * scale}px system-ui`;
       ctx.textAlign = 'center';
       ctx.fillText(t(camera.active ? 'previewHidden' : 'emptyPreview'), preview.width / 2, preview.height / 2, preview.width - 32);
     }
@@ -288,7 +289,7 @@
   $('clear').addEventListener('click', () => { stop(); clearResult(); error = ''; status = 'idle'; render(); });
   ['role', 'mode', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
     if (!trace.length) currentMode = $('mode').value;
-    render(); drawGraph();
+    render(); drawGraph(); drawPreview();
   }));
   $('text-input').addEventListener('input', inputInfo);
   $('theme').addEventListener('click', () => {
@@ -322,7 +323,7 @@
     updateRegion();
   });
   preview.addEventListener('pointercancel', () => { dragStart = null; });
-  window.addEventListener('resize', drawGraph);
+  window.addEventListener('resize', () => { drawGraph(); drawPreview(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && busy) stop('hidden'); });
   window.addEventListener('pagehide', () => stop('stopped'));
   updateRegion(); render(); drawGraph(); drawPreview();
