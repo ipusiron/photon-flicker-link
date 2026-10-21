@@ -120,8 +120,7 @@
           video.srcObject = stream;
         }
         const loaded = ready(ticket);
-        await video.play();
-        await loaded;
+        await Promise.all([video.play(), loaded]);
         if (ticket !== generation) throw new Error('cancelled');
         if (options.file && (!Number.isFinite(video.duration) || video.duration > MAX_VIDEO_SECONDS)) {
           throw new Error('videoDuration');
@@ -138,6 +137,10 @@
         const sample = (_, metadata) => {
           if (ticket !== generation || !active) return;
           const time = metadata ? metadata.mediaTime : video.currentTime;
+          // Pull the video before querying its counters. Chromium otherwise throttles a hidden
+          // video's presentation when no rVFC is registered, even while currentTime advances.
+          try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height); }
+          catch (_) { stop('sampleError'); return; }
           const decodedCount = video.getVideoPlaybackQuality?.().totalVideoFrames;
           const fresh = rvfc || decodedCount === undefined || decodedCount === 0 || decodedCount !== previousCount;
           if (fresh && time > last && (rvfc || time - last >= 1 / 60)) {
@@ -148,7 +151,6 @@
             count++;
             stats.fps = time > first ? (count - 1) / (time - first) : 0;
             try {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               const rect = region(crop);
               const x = Math.floor(rect.x * canvas.width), y = Math.floor(rect.y * canvas.height);
               const w = Math.max(1, Math.min(canvas.width - x, Math.floor(rect.w * canvas.width)));

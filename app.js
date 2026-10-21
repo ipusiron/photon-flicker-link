@@ -15,6 +15,7 @@
   let busy = false, generation = 0, decoder = null, result = null, sync = null, environment = null;
   let currentRole = 'send', currentMode = 'mono', expected = '', status = 'idle', error = '', live = '';
   let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region();
+  let lessonLanguage = null, dragStart = null;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
   const screen = PhotonScreen.create($('tx'));
@@ -81,6 +82,44 @@
     }
     if (txFrame) $('tx-progress').textContent = t(txFrame.kind) + ` · ${txFrame.index + 1} / ${txFrame.total}`;
     inputInfo();
+    renderLessons();
+  }
+  function renderLessons() {
+    if (lessonLanguage === language) return;
+    const opened = Array.from($('lesson-content').children).map(d => d.open);
+    lessonLanguage = language;
+    $('lesson-content').replaceChildren();
+    const lang = language === 'ja' ? 0 : 1;
+    M.lessons.forEach((lesson, i) => {
+      const details = document.createElement('details');
+      details.open = !!opened[i];
+      const summary = document.createElement('summary'); summary.textContent = `${i + 1}. ${lesson.title[lang]}`;
+      const para = document.createElement('p'); para.textContent = lesson.text[lang];
+      const wrap = document.createElement('div'); wrap.className = 'table-wrap';
+      const table = document.createElement('table');
+      const thead = document.createElement('thead'), tbody = document.createElement('tbody');
+      const header = document.createElement('tr');
+      lesson.headers[lang].split(' / ').forEach(text => {
+        const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = text; header.append(cell);
+      });
+      thead.append(header);
+      lesson.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        row.slice(lang * 2, lang * 2 + 2).forEach((text, c) => {
+          const cell = document.createElement(c === 0 ? 'th' : 'td');
+          if (c === 0) cell.scope = 'row';
+          cell.textContent = text; tr.append(cell);
+        });
+        tbody.append(tr);
+      });
+      table.append(thead, tbody); wrap.append(table);
+      const sources = document.createElement('div'); sources.className = 'lesson-sources';
+      lesson.sources.forEach(([text, href]) => {
+        const a = document.createElement('a'); a.textContent = text; a.href = href;
+        a.target = '_blank'; a.rel = 'noopener noreferrer'; sources.append(a);
+      });
+      details.append(summary, para, wrap, sources); $('lesson-content').append(details);
+    });
   }
   function clearResult() {
     result = null; sync = null; live = ''; trace = []; marks = []; txFrame = null; environment = null; lastDraw = -Infinity;
@@ -164,14 +203,76 @@
       stop('failed');
     }
   }
-  // Visual rendering is expanded in stage 1d. Sampling always reads the unmarked canvas.
+  // The marked preview is separate from the unmarked sampling canvas.
   function drawPreview() {
     const ctx = preview.getContext('2d');
+    const css = getComputedStyle(document.documentElement);
+    if (camera.active) { preview.width = sampleCanvas.width; preview.height = sampleCanvas.height; }
     ctx.clearRect(0, 0, preview.width, preview.height);
-    if (camera.active && $('preview-enabled').checked) ctx.drawImage(sampleCanvas, 0, 0, preview.width, preview.height);
+    if (camera.active && $('preview-enabled').checked) {
+      ctx.drawImage(sampleCanvas, 0, 0, preview.width, preview.height);
+      const { x, y, w, h } = selectedRegion;
+      ctx.lineWidth = 5; ctx.strokeStyle = css.getPropertyValue('--roi-dark');
+      ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
+      ctx.lineWidth = 2; ctx.strokeStyle = css.getPropertyValue('--roi-light'); ctx.setLineDash([8, 5]);
+      ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = css.getPropertyValue('--muted'); ctx.font = '22px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(t(camera.active ? 'previewHidden' : 'emptyPreview'), preview.width / 2, preview.height / 2, preview.width - 32);
+    }
   }
   function drawGraph() {
-    graph.getContext('2d').clearRect(0, 0, graph.width, graph.height);
+    const width = Math.max(240, graph.clientWidth), height = 240, dpr = window.devicePixelRatio || 1;
+    graph.width = Math.round(width * dpr); graph.height = Math.round(height * dpr);
+    const ctx = graph.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement);
+    const color = key => css.getPropertyValue(key).trim();
+    const left = 36, right = width - 12, top = 18, bottom = height - 32;
+    const end = trace.length ? trace.at(-1).time : 20, start = Math.max(0, end - 20);
+    const x = time => left + (time - start) / Math.max(1, end - start) * (right - left);
+    const y = value => bottom - C.clamp(value) * (bottom - top);
+    ctx.font = '12px system-ui'; ctx.textAlign = 'right';
+    for (const value of [0, 0.25, 0.5, 0.75, 1]) {
+      ctx.strokeStyle = color('--line'); ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
+      ctx.fillStyle = color('--muted'); ctx.fillText(String(value), left - 5, y(value) + 4);
+    }
+    ctx.textAlign = 'left'; ctx.fillText(start.toFixed(1) + ' s', left, height - 9);
+    ctx.textAlign = 'right'; ctx.fillText(end.toFixed(1) + ' s', right, height - 9);
+    ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
+    const corrected = rgb => currentMode === 'color' && sync?.calibration ?
+      C.multiply(sync.calibration.inverse, rgb.map((v, c) => v - sync.calibration.black[c])) : rgb;
+    const threshold = currentMode === 'color' ? 0.5 : sync ? (sync.low + sync.high) / 2 : null;
+    if (threshold !== null) {
+      ctx.strokeStyle = color('--muted'); ctx.setLineDash([5, 5]); ctx.beginPath();
+      ctx.moveTo(left, y(threshold)); ctx.lineTo(right, y(threshold)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    const channels = currentMode === 'color' ? [0, 1, 2] : [0];
+    const colors = ['--plot-ink', '--plot-secondary', '--plot-tertiary'];
+    channels.forEach(c => {
+      ctx.strokeStyle = color(colors[c]); ctx.lineWidth = 2; ctx.setLineDash([[], [10, 5], [2, 4]][c]);
+      ctx.beginPath(); let first = true;
+      trace.filter(s => s.time >= start).forEach(s => {
+        const value = currentMode === 'color' ? corrected(s.rgb)[c] : C.luminance(s.rgb);
+        if (first) ctx.moveTo(x(s.time), y(value)); else ctx.lineTo(x(s.time), y(value));
+        first = false;
+      });
+      ctx.stroke();
+    });
+    ctx.setLineDash([]); ctx.lineWidth = 1;
+    for (const mark of marks.filter(m => m.time >= start)) {
+      ctx.strokeStyle = color(mark.confidence < C.CONFIDENCE ? '--warning' : '--border');
+      ctx.beginPath(); ctx.moveTo(x(mark.time), bottom - 12); ctx.lineTo(x(mark.time), bottom); ctx.stroke();
+      if (mark.confidence < C.CONFIDENCE) {
+        ctx.fillStyle = color('--warning'); ctx.textAlign = 'center'; ctx.fillText('?', x(mark.time), top + 12);
+      }
+    }
+    ctx.restore();
+    if (trace.length) {
+      const values = currentMode === 'color' ? corrected(trace.at(-1).rgb) : [C.luminance(trace.at(-1).rgb)];
+      $('sample-value').textContent = (currentMode === 'color' ? 'RGB: ' : 'Y: ') + values.map(v => v.toFixed(3)).join(' / ');
+    }
   }
   function updateRegion() {
     selectedRegion = camera.setRegion(Object.fromEntries(['x', 'y', 'w', 'h'].map(key => [key, Number($('roi-' + key).value) / 100])));
@@ -186,11 +287,16 @@
   $('stop').addEventListener('click', () => stop());
   $('clear').addEventListener('click', () => { stop(); clearResult(); error = ''; status = 'idle'; render(); });
   ['role', 'mode', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
-    currentMode = $('mode').value; render(); drawGraph();
+    if (!trace.length) currentMode = $('mode').value;
+    render(); drawGraph();
   }));
   $('text-input').addEventListener('input', inputInfo);
-  $('theme').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); render(); drawGraph(); });
-  $('language').addEventListener('click', () => { language = language === 'ja' ? 'en' : 'ja'; save('language', language); render(); });
+  $('theme').addEventListener('click', () => {
+    theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); render(); drawGraph(); drawPreview();
+  });
+  $('language').addEventListener('click', () => {
+    language = language === 'ja' ? 'en' : 'ja'; save('language', language); render(); drawPreview();
+  });
   $('help').addEventListener('click', () => $('help-dialog').showModal());
   $('help-close').addEventListener('click', () => $('help-dialog').close());
   $('warning-cancel').addEventListener('click', () => $('warning-dialog').close());
@@ -201,7 +307,23 @@
   });
   $('preview-enabled').checked = !reduced.matches;
   $('preview-enabled').addEventListener('change', drawPreview);
+  function pointerPosition(event) {
+    const rect = preview.getBoundingClientRect();
+    return { x: C.clamp((event.clientX - rect.left) / rect.width), y: C.clamp((event.clientY - rect.top) / rect.height) };
+  }
+  preview.addEventListener('pointerdown', event => { dragStart = pointerPosition(event); preview.setPointerCapture(event.pointerId); });
+  preview.addEventListener('pointerup', event => {
+    if (!dragStart) return;
+    const end = pointerPosition(event);
+    const rect = { x: Math.min(dragStart.x, end.x), y: Math.min(dragStart.y, end.y),
+      w: Math.abs(dragStart.x - end.x), h: Math.abs(dragStart.y - end.y) };
+    dragStart = null;
+    Object.entries(rect).forEach(([key, value]) => { $('roi-' + key).value = Math.round(value * 100); });
+    updateRegion();
+  });
+  preview.addEventListener('pointercancel', () => { dragStart = null; });
+  window.addEventListener('resize', drawGraph);
   document.addEventListener('visibilitychange', () => { if (document.hidden && busy) stop('hidden'); });
   window.addEventListener('pagehide', () => stop('stopped'));
-  updateRegion(); render();
+  updateRegion(); render(); drawGraph(); drawPreview();
 }());

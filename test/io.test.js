@@ -94,3 +94,32 @@ test('Both IO paths have a hard timeout', () => {
   assert.equal(screen.active, false);
   assert.deepEqual(stops, ['timeout']);
 });
+test('rAF pulls hidden video before checking frame progress and suppresses duplicate frames', async () => {
+  const f = fixture(), frames = [];
+  let presented = 0, available = 1;
+  const ctx = f.canvas.getContext();
+  ctx.drawImage = () => { presented = available; };
+  ctx.getImageData = () => ({ data: new Uint8ClampedArray([118, 118, 118, 255]) });
+  Object.assign(f.video, { readyState: 2, videoWidth: 160, videoHeight: 120, currentTime: 0,
+    duration: 10, play: async () => {}, getVideoPlaybackQuality: () => ({ totalVideoFrames: presented }) });
+  f.host.URL.createObjectURL = () => 'blob:test';
+  const camera = Camera.create(f.video, f.canvas, f.host);
+  await camera.start({ file: { size: 10 }, onFrame: frame => frames.push(frame) });
+  for (const [time, frame] of [[0.01, 1], [0.03, 1], [0.043, 2], [0.06, 2], [0.076, 3]]) {
+    f.video.currentTime = time;
+    available = frame;
+    f.tick(time * 1000);
+  }
+  assert.deepEqual(frames.map(frame => frame.time), [0.01, 0.043, 0.076]);
+  assert.ok(Math.abs(camera.info.fps - 30.303) < 0.001);
+  camera.stop();
+});
+test('Playback rejection settles the pending load without an unhandled rejection', async () => {
+  const f = fixture();
+  f.host.URL.createObjectURL = () => 'blob:test';
+  f.video.play = async () => { throw new Error('playDenied'); };
+  const camera = Camera.create(f.video, f.canvas, f.host);
+  await assert.rejects(camera.start({ file: { size: 10 }, onFrame() {} }), /playDenied/);
+  assert.equal(camera.active, false);
+  await new Promise(resolve => setImmediate(resolve));
+});
