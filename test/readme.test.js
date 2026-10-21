@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const C = require('../codec-core.js');
+const C = require('../reliable-codec.js');
 const root = path.resolve(__dirname, '..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const docs = ['README.md', 'README.en.md'].map(read);
@@ -32,7 +32,7 @@ test('README: both throughput tables and UTF-8 examples agree with the codec', (
     assert.equal(new Set(rows.map(r => r[1] + r[2])).size, 9);
     for (const [, mode, rate, raw, duration, net] of rows) {
       const cfg = C.config({ mode, rate: Number(rate) });
-      assert.equal(Number(raw), cfg.bits * cfg.rate);
+      assert.equal(Number(raw), cfg.bits * cfg.rate / 2);
       assert.equal(Number(duration), C.duration(8, cfg));
       assert.equal(Number(net), Number((64 / C.duration(8, cfg)).toFixed(2)));
     }

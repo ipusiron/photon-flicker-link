@@ -240,8 +240,9 @@
   }
 
   // Fit known transition positions to timestamps. The receiver does not use the sender's rate setting.
-  function findPreamble(samples, mode = 'mono') {
+  function findPreamble(samples, mode = 'mono', pattern = PREAMBLE, observedIntervals = false) {
     if (samples.length < 25) return null;
+    const positions = pattern.flatMap((value, i) => i && value !== pattern[i - 1] ? [i] : []);
     const measure = rgb => signal(rgb, mode);
     const sorted = samples.map(s => measure(s.rgb)).sort((a, b) => a - b);
     const lo = sorted[Math.floor(sorted.length * 0.1)], hi = sorted[Math.floor(sorted.length * 0.9)];
@@ -252,32 +253,37 @@
       const value = (measure(samples[i].rgb) - lo) / (hi - lo);
       const next = value > 0.6 ? 1 : value < 0.4 ? 0 : state;
       if (next !== state) {
-        edges.push({ time: (samples[i].time + samples[i - 1].time) / 2, up: next === 1 });
+        edges.push({ time: (samples[i].time + samples[i - 1].time) / 2, up: next === 1,
+          interval: samples[i].time - samples[i - 1].time });
         state = next;
       }
     }
-    for (let i = edges.length - EDGES.length; i >= 0; i--) {
-      const group = edges.slice(i, i + EDGES.length);
-      if (!group.every((edge, j) => edge.up === (j % 2 === 0))) continue;
-      const mx = mean(EDGES), my = mean(group.map(e => e.time));
-      const period = EDGES.reduce((s, x, j) => s + (x - mx) * (group[j].time - my), 0) /
-        EDGES.reduce((s, x) => s + (x - mx) ** 2, 0);
+    for (let i = edges.length - positions.length; i >= 0; i--) {
+      const group = edges.slice(i, i + positions.length);
+      if (!group.every((edge, j) => edge.up === !!pattern[positions[j]])) continue;
+      const mx = mean(positions), my = mean(group.map(e => e.time));
+      const period = positions.reduce((s, x, j) => s + (x - mx) * (group[j].time - my), 0) /
+        positions.reduce((s, x) => s + (x - mx) ** 2, 0);
       if (period < 0.095 || period > 0.7) continue;
       const start = my - period * mx;
-      const error = Math.max(...group.map((e, j) => Math.abs(e.time - start - EDGES[j] * period)));
-      if (error > period * 0.24) continue;
-      if (samples.at(-1).time < start + (PREAMBLE.length - 0.2) * period) continue;
-      const slots = PREAMBLE.map((_, j) => windowRGB(samples, start + (j + 0.22) * period, start + (j + 0.78) * period));
+      const error = Math.max(...group.map((e, j) => Math.abs(e.time - start - positions[j] * period)));
+      // A dropped frame gives an interval containing the transition, not an exact midpoint timestamp.
+      if (group.some((e, j) => Math.abs(e.time - start - positions[j] * period) >
+          Math.max(period * 0.24, observedIntervals ? e.interval / 2 : 0))) continue;
+      if (samples.at(-1).time < start + (pattern.length - 0.2) * period) continue;
+      const slots = pattern.map((_, j) => windowRGB(samples, start + (j + 0.22) * period, start + (j + 0.78) * period) ||
+        (observedIntervals ? observedGapRGB(samples, start + (j + 0.5) * period, period,
+          rgb => Array(3).fill((measure(rgb) - lo) / (hi - lo)), 2) : null));
       if (slots.some(v => v === null)) continue;
-      const dark = [0, 1, 2].map(c => mean(slots.filter((_, j) => !PREAMBLE[j]).map(rgb => rgb[c])));
-      const light = [0, 1, 2].map(c => mean(slots.filter((_, j) => PREAMBLE[j]).map(rgb => rgb[c])));
+      const dark = [0, 1, 2].map(c => mean(slots.filter((_, j) => !pattern[j]).map(rgb => rgb[c])));
+      const light = [0, 1, 2].map(c => mean(slots.filter((_, j) => pattern[j]).map(rgb => rgb[c])));
       const low = measure(dark), high = measure(light);
       if (high - low < 0.025) continue;
-      if (slots.some((rgb, j) => Math.abs((measure(rgb) - low) / (high - low) - PREAMBLE[j]) > 0.3)) continue;
+      if (slots.some((rgb, j) => Math.abs((measure(rgb) - low) / (high - low) - pattern[j]) > 0.3)) continue;
       const intervals = samples.slice(1).map((s, j) => s.time - samples[j].time).sort((a, b) => a - b);
       const samplePeriod = intervals[Math.floor(intervals.length / 2)];
       return { start, period, low, high, dark, light, framesPerSymbol: period / samplePeriod, error,
-        anchors: group.map((e, j) => ({ x: EDGES[j], y: e.time })) };
+        anchors: group.map((e, j) => ({ x: positions[j], y: e.time })) };
     }
     return null;
   }

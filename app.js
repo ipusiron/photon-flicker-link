@@ -1,7 +1,7 @@
 /* Photon Flicker Link - MIT (c) 2026 ipusiron. */
 (function () {
   'use strict';
-  const C = window.PhotonCodec, M = window.PhotonMessages;
+  const C = window.PhotonReliable, M = window.PhotonMessages;
   const $ = id => document.getElementById(id);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const dark = matchMedia('(prefers-color-scheme: dark)');
@@ -18,6 +18,7 @@
   let lessonLanguage = null, dragStart = null;
   let testingCamera = false, cameras = [], selectedCameraId = '', cameraCheck = null;
   let countdownValue = null, quality = null, qualityTrace = [];
+  let receiveProgress = null, retries = 0, retryReason = '';
   let cameraListState = 'cameraListHint', cameraCheckState = 'cameraUnchecked', listGeneration = 0;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
@@ -74,6 +75,9 @@
     $('preview-note').textContent = t(camera.active ? testingCamera ? 'testPreviewNote' : 'activePreviewNote' :
       $('role').value === 'offline' ? 'offlinePreviewNote' : 'receivePreviewNote');
     $('receive-status').textContent = t(status);
+    $('receive-progress').textContent = receiveProgress ? t('receiveProgress', {
+      count: receiveProgress.index + 1, total: receiveProgress.total ?? '?', retries }) :
+      retries ? t('retryProgress', { retries, reason: t(retryReason) }) : '';
     if (quality) {
       $('signal-health').textContent = t('signalHealth', { white: (quality.white * 100).toFixed(0),
         dark: (quality.dark * 100).toFixed(0), clipped: (quality.clipped * 100).toFixed(0), span: quality.span.toFixed(3) });
@@ -96,13 +100,18 @@
       $('crc').textContent = t(result.crcOk ? 'ok' : 'fail');
       $('frame-check').textContent = t(result.endOk ? 'ok' : 'fail') + ' / ' + t(result.utf8Ok ? 'ok' : 'fail');
       $('confidence').textContent = result.confidence.toFixed(3);
+      $('corrections').textContent = t('corrections', { bytes: result.correctedBytes, bits: result.correctedHeaderBits });
       const agreement = C.matchRate(expected, result.text, currentRole);
       $('agreement-field').hidden = agreement === null;
       $('agreement').textContent = agreement === null ? '—' : agreement.toFixed(1) + '% / ' + (100 - agreement).toFixed(1) + '%';
       $('diagnostics').textContent = t('symbolRow') + '\n' + result.decisions.map(d =>
         `${d.index} / ${d.time.toFixed(3)} / ${d.values.map(v => v === null ? '?' : v).join('')} / ${d.confidence.toFixed(3)}`).join('\n');
     }
-    if (txFrame) $('tx-progress').textContent = t(txFrame.kind) + ` · ${txFrame.index + 1} / ${txFrame.total}`;
+    if (txFrame) {
+      $('tx-progress').textContent = t(txFrame.kind) + ` · ${txFrame.index + 1} / ${txFrame.total}`;
+      $('tx-remaining').textContent = busy || status === 'sent' ?
+        t('remaining', { seconds: busy ? txFrame.remaining.toFixed(1) : '0.0' }) : '';
+    }
     inputInfo();
     renderLessons();
   }
@@ -146,7 +155,9 @@
   function clearResult() {
     result = null; sync = null; live = ''; trace = []; marks = []; txFrame = null; environment = null; lastDraw = -Infinity;
     countdownValue = null; resetQuality();
-    ['result-text', 'diagnostics', 'live', 'tx-progress', 'sample-value'].forEach(id => { $(id).textContent = ''; });
+    receiveProgress = null; retries = 0; retryReason = '';
+    ['result-text', 'diagnostics', 'live', 'tx-progress', 'tx-remaining', 'sample-value', 'corrections', 'receive-progress']
+      .forEach(id => { $(id).textContent = ''; });
     ['crc', 'frame-check', 'confidence', 'agreement', 'env-fps', 'env-resolution', 'env-clock', 'env-exposure', 'env-wb']
       .forEach(id => { $(id).textContent = '—'; });
     $('agreement-field').hidden = true;
@@ -166,8 +177,16 @@
     render();
   }
   function received(event) {
-    if (event.type === 'sync') { sync = event; status = 'decoding'; }
-    if (event.type === 'symbol') marks.push(event);
+    if (event.type === 'sync') { sync = event; status = 'decoding'; error = ''; }
+    if (event.type === 'symbol') {
+      marks.push(event); receiveProgress = event;
+      if (sync) { sync.period = event.period; sync.framesPerSymbol = event.period * (environment?.fps || 0); }
+    }
+    if (event.type === 'rejected') { result = event; }
+    if (event.type === 'resync') {
+      sync = null; live = ''; marks = []; receiveProgress = null; retries = event.attempts;
+      retryReason = event.code; status = 'resynchronizing';
+    }
     if (event.type === 'text' && event.text !== live) { live = event.text; paintText($('live'), live); }
     if (event.type === 'error') { error = event.code; stop('stopped'); }
     if (event.type === 'result') { result = event; live = event.text; stop('complete'); drawGraph(); }
@@ -339,11 +358,6 @@
     ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
     const corrected = rgb => currentMode === 'color' && sync?.calibration ?
       C.multiply(sync.calibration.inverse, rgb.map((v, c) => v - sync.calibration.black[c])) : rgb;
-    const threshold = currentMode === 'color' ? 0.5 : sync ? (sync.low + sync.high) / 2 : null;
-    if (threshold !== null) {
-      ctx.strokeStyle = color('--muted'); ctx.setLineDash([5, 5]); ctx.beginPath();
-      ctx.moveTo(left, y(threshold)); ctx.lineTo(right, y(threshold)); ctx.stroke(); ctx.setLineDash([]);
-    }
     const channels = currentMode === 'color' ? [0, 1, 2] : [0];
     const colors = ['--plot-ink', '--plot-secondary', '--plot-tertiary'];
     channels.forEach(c => {
