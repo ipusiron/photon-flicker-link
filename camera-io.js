@@ -1,11 +1,21 @@
 /* Photon Flicker Link - MIT (c) 2026 ipusiron. Browser camera lifecycle and frame sampling. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./codec-core.js'));
-  else root.PhotonCamera = factory(root.PhotonCodec);
-}(typeof globalThis !== 'undefined' ? globalThis : this, function (core) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./codec-core.js'), require('./optical-panel.js'));
+  else root.PhotonCamera = factory(root.PhotonCodec, root.PhotonPanel);
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (core, panel) {
   'use strict';
   const MAX_FILE_BYTES = 128 * 1024 * 1024;
   const MAX_VIDEO_SECONDS = 120;
+  const MAX_CAMERA_SECONDS = 240;
+  const OPEN_SECONDS = 30;
+
+  function controlState(track) {
+    let settings = {};
+    try { settings = track.getSettings?.() || {}; } catch (_) { /* Optional API. */ }
+    const state = value => value === 'manual' ? 'manual' :
+      (value === 'continuous' || value === 'single-shot' ? 'auto' : 'unsupported');
+    return { exposure: state(settings.exposureMode), whiteBalance: state(settings.whiteBalanceMode) };
+  }
 
   async function listCameras(host = globalThis) {
     if (!host.navigator.mediaDevices?.enumerateDevices) throw new Error('deviceListUnavailable');
@@ -28,22 +38,22 @@
   }
 
   async function lockControls(track, supported = {}, isCurrent = () => true) {
-    const info = { exposure: 'unsupported', whiteBalance: 'unsupported' };
+    const info = controlState(track);
     let caps = {}, settings = {};
     try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (_) { /* Optional API. */ }
     try { settings = track.getSettings ? track.getSettings() : {}; } catch (_) { /* Optional API. */ }
     const manual = (key) => supported[key] && Array.isArray(caps[key]) && caps[key].includes('manual');
     // Mode application must resolve before applying the time/temperature values.
-    if (manual('exposureMode') && isCurrent()) {
+    const range = caps.exposureTime, current = settings.exposureTime;
+    const knownExposure = supported.exposureTime && range && Number.isFinite(current) &&
+      Number.isFinite(range.min) && Number.isFinite(range.max) && current >= range.min && current <= range.max;
+    if (manual('exposureMode') && knownExposure && isCurrent()) {
       try {
         await track.applyConstraints({ advanced: [{ exposureMode: 'manual' }] });
         if (!isCurrent()) return info;
-        if (supported.exposureTime && caps.exposureTime) {
-          const range = caps.exposureTime;
-          const current = Number.isFinite(settings.exposureTime) ? settings.exposureTime : (range.min + range.max) / 2;
-          await track.applyConstraints({ advanced: [{ exposureTime: core.clamp(current, range.min, range.max) }] });
-        }
-        info.exposure = track.getSettings?.().exposureMode === 'manual' ? 'manual' : 'requested';
+        await track.applyConstraints({ advanced: [{ exposureTime: current }] });
+        const observed = track.getSettings?.() || {};
+        info.exposure = observed.exposureMode === 'manual' && observed.exposureTime === current ? 'manual' : 'requested';
       } catch (_) { info.exposure = 'failed'; }
     }
     if (manual('whiteBalanceMode') && isCurrent()) {
@@ -58,11 +68,12 @@
   function create(video, canvas, host = globalThis) {
     let generation = 0, stream = null, url = null, frameId = null, timer = null, watchdog = null;
     let rvfc = false, active = false, handlers = [], rejectReady = null;
-    let onStop = () => {}, lastFrameAt = 0, openedAt = 0, crop = region(), stats = {};
+    let onStop = () => {}, lastFrameAt = 0, openedAt = null, crop = region(), stats = {}, limit = MAX_CAMERA_SECONDS;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     function snapshot() {
-      const elapsedSeconds = active ? Math.max(0, (host.performance.now() - openedAt) / 1000) : (stats.elapsedSeconds || 0);
-      return { ...stats, elapsedSeconds, remainingSeconds: Math.max(0, MAX_VIDEO_SECONDS - elapsedSeconds) };
+      const elapsedSeconds = active && openedAt !== null ? Math.max(0, (host.performance.now() - openedAt) / 1000) :
+        (stats.elapsedSeconds || 0);
+      return { ...stats, elapsedSeconds, remainingSeconds: Math.max(0, limit - elapsedSeconds) };
     }
     function listen(target, name, handler) {
       target.addEventListener(name, handler);
@@ -107,17 +118,19 @@
     async function start(options) {
       stop();
       const ticket = generation;
-      openedAt = host.performance.now();
+      openedAt = null;
+      limit = options.file ? MAX_VIDEO_SECONDS : MAX_CAMERA_SECONDS;
       active = true;
       onStop = options.onStop || (() => {});
       stats = { fps: 0, frames: 0, width: 0, height: 0, exposure: 'unsupported', whiteBalance: 'unsupported', deviceId: '', label: '' };
       rvfc = !!host.HTMLVideoElement && 'requestVideoFrameCallback' in host.HTMLVideoElement.prototype;
       stats.callback = rvfc ? 'rVFC' : 'rAF';
       lastFrameAt = host.performance.now();
-      timer = host.setTimeout(() => stop('timeout'), MAX_VIDEO_SECONDS * 1000);
+      timer = host.setTimeout(() => stop('openingTimeout'), OPEN_SECONDS * 1000);
       video.muted = true;
       video.playsInline = true;
       try {
+        if (host.document.hidden) throw new Error('hidden');
         if (options.file) {
           if (options.file.size > MAX_FILE_BYTES || options.file.size === 0) throw new Error('fileSize');
           url = host.URL.createObjectURL(options.file);
@@ -136,8 +149,8 @@
           try { stats.deviceId = track.getSettings?.().deviceId || ''; } catch (_) { /* Optional device metadata. */ }
           listen(track, 'ended', () => stop('cameraEnded'));
           listen(track, 'mute', () => stop('cameraMuted'));
-          stats = { ...stats, ...await lockControls(track,
-            host.navigator.mediaDevices.getSupportedConstraints?.() || {}, () => ticket === generation) };
+          stats = { ...stats, ...(options.spatial ? controlState(track) : await lockControls(track,
+            host.navigator.mediaDevices.getSupportedConstraints?.() || {}, () => ticket === generation)) };
           if (ticket !== generation) throw new Error('cancelled');
           video.srcObject = stream;
         }
@@ -155,32 +168,77 @@
         listen(video, 'ended', () => stop('videoEnded'));
         listen(video, 'error', () => stop('videoError'));
         listen(host.document, 'visibilitychange', () => { if (host.document.hidden) stop('hidden'); });
-        let first = null, last = -1, count = 0, previousCount = -1;
+        let first = null, last = -1, count = 0, previousCount = -1, previousPresented = -1, fallbackClock = null;
+        const clockAnchors = {};
         const sample = (_, metadata) => {
           if (ticket !== generation || !active) return;
-          const time = metadata ? metadata.mediaTime : video.currentTime;
           // Pull the video before querying its counters. Chromium otherwise throttles a hidden
           // video's presentation when no rVFC is registered, even while currentTime advances.
           try { ctx.drawImage(video, 0, 0, canvas.width, canvas.height); }
           catch (_) { stop('sampleError'); return; }
-          const decodedCount = video.getVideoPlaybackQuality?.().totalVideoFrames;
-          const fresh = rvfc || decodedCount === undefined || decodedCount === 0 || decodedCount !== previousCount;
+          const quality = video.getVideoPlaybackQuality?.() || {};
+          const presentedCount = Number.isFinite(quality.totalVideoFrames) ?
+            quality.totalVideoFrames - (quality.droppedVideoFrames || 0) : undefined;
+          // A hidden live video may count every compositor presentation as dropped even though
+          // drawImage receives new decoded camera frames. Chromium exposes those separately.
+          // File decode can run ahead of playback, so it must not use this live-stream counter.
+          const liveDecoded = !options.file && Number.isFinite(video.webkitDecodedFrameCount) && video.webkitDecodedFrameCount > 0;
+          const decodedCount = liveDecoded ? video.webkitDecodedFrameCount : presentedCount;
+          stats.droppedFrames = quality.droppedVideoFrames || 0;
+          const presented = metadata?.presentedFrames;
+          const newPresented = Number.isFinite(presented) && presented > previousPresented;
+          const fresh = rvfc ? (!Number.isFinite(presented) || newPresented) :
+            decodedCount === undefined || decodedCount !== previousCount;
+          let time = metadata ? metadata.mediaTime : video.currentTime;
+          let source = metadata ? 'mediaTime' : 'currentTime';
+          if (metadata && !options.file) {
+            // Associate clocks on the same captured frame; do not splice unrelated absolute time bases.
+            for (const name of ['captureTime', 'presentationTime']) {
+              if (Number.isFinite(metadata[name]) && !clockAnchors[name]) {
+                clockAnchors[name] = { raw: metadata[name] / 1000, time: Number.isFinite(time) && time >= 0 ? time : Math.max(0, last) };
+              }
+            }
+            if (!fallbackClock && (!Number.isFinite(time) || time <= last) && newPresented) {
+              fallbackClock = ['captureTime', 'presentationTime'].find(name => clockAnchors[name] && Number.isFinite(metadata[name]));
+            }
+            if (fallbackClock) {
+              source = fallbackClock;
+              const anchor = clockAnchors[source];
+              time = Number.isFinite(metadata[source]) && newPresented ?
+                anchor.time + metadata[source] / 1000 - anchor.raw : NaN;
+            }
+          }
           if (fresh && time > last && (rvfc || time - last >= 1 / 60)) {
             previousCount = decodedCount;
+            if (Number.isFinite(presented)) previousPresented = presented;
             last = time;
             lastFrameAt = host.performance.now();
-            if (first === null) first = time;
+            if (first === null) {
+              first = time;
+              openedAt = lastFrameAt;
+              host.clearTimeout(timer);
+              timer = host.setTimeout(() => stop('timeout'), limit * 1000);
+            }
             count++;
             stats.frames = count;
             stats.fps = time > first ? (count - 1) / (time - first) : 0;
+            stats.timeSource = source;
+            stats.frameCounter = rvfc ? 'presentedFrames' : liveDecoded ? 'decodedFrames' :
+              presentedCount === undefined ? 'currentTime' : 'playbackQuality';
             try {
               const rect = region(crop);
+              if (options.spatial) {
+                const optical = panel.read(ctx.getImageData(0, 0, canvas.width, canvas.height), rect);
+                const rgb = [core.clamp((optical.data + 1) / 2), core.clamp((optical.clock + 1) / 2), optical.quality];
+                options.onFrame({ time, rgb, optical, health: optical.health, stats: snapshot(), rect });
+              } else {
               const x = Math.floor(rect.x * canvas.width), y = Math.floor(rect.y * canvas.height);
               const w = Math.max(1, Math.min(canvas.width - x, Math.floor(rect.w * canvas.width)));
               const h = Math.max(1, Math.min(canvas.height - y, Math.floor(rect.h * canvas.height)));
               const pixels = ctx.getImageData(x, y, w, h).data;
               const rgb = core.averageRGBA(pixels);
               options.onFrame({ time, rgb, health: core.pixelHealth(pixels), stats: snapshot(), rect });
+              }
             } catch (_) { stop('sampleError'); return; }
           }
           if (ticket === generation && active) schedule();
@@ -201,5 +259,6 @@
     return { start, stop, setRegion(value) { crop = region(value); return crop; },
       get active() { return active; }, get info() { return snapshot(); } };
   }
-  return Object.freeze({ create, region, lockControls, listCameras, errorCode, MAX_FILE_BYTES, MAX_VIDEO_SECONDS });
+  return Object.freeze({ create, region, lockControls, controlState, listCameras, errorCode,
+    MAX_FILE_BYTES, MAX_VIDEO_SECONDS, MAX_CAMERA_SECONDS, OPEN_SECONDS });
 }));

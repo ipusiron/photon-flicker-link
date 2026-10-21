@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="style.css">
   <script src="codec-core.js" defer></script>
   <script src="reliable-codec.js" defer></script>
+  <script src="spatial-codec.js" defer></script>
+  <script src="optical-panel.js" defer></script>
   <script src="camera-io.js" defer></script>
   <script src="screen-tx.js" defer></script>
   <script src="messages.js" defer></script>
@@ -38,10 +40,6 @@
       <p class="muted" data-i18n="privacy"></p>
       <p class="muted" data-i18n="ethics"></p>
       <div class="settings-grid">
-        <div class="field"><label for="mode" data-i18n="mode"></label>
-          <select id="mode"><option value="mono" data-i18n="mono"></option><option value="color" data-i18n="color"></option>
-            <option value="bicolor" data-i18n="bicolor"></option></select>
-        </div>
         <div class="field"><label for="rate" data-i18n="rate"></label>
           <select id="rate"><option value="2">2 symbol/s</option><option value="4">4 symbol/s</option><option value="8">8 symbol/s</option></select>
         </div>
@@ -49,6 +47,7 @@
           <select id="contrast"><option value="low" data-i18n="low"></option><option value="high" data-i18n="high"></option></select>
         </div>
       </div>
+      <p data-i18n="schemeNote"></p>
       <p class="muted" data-i18n="settingsNote"></p>
     </section>
     <section class="card" aria-labelledby="environment-title">
@@ -98,7 +97,7 @@
     <section id="transmitter" class="card" aria-labelledby="tx-title">
       <h2 id="tx-title"><span class="number">04</span> <span data-i18n="transmitter"></span></h2>
       <p id="tx-countdown" class="countdown" role="status" aria-live="polite"></p>
-      <canvas id="tx" width="640" height="300" role="img" data-label="txLabel"></canvas>
+      <canvas id="tx" width="640" height="240" role="img" data-label="txLabel"></canvas>
       <p id="tx-progress" class="mono" aria-live="off"></p>
       <p id="tx-remaining" class="mono" aria-live="off"></p>
       <p class="muted" data-i18n="txNote"></p>
@@ -129,6 +128,7 @@
       <label class="choice"><input id="preview-enabled" type="checkbox" checked><span data-i18n="previewEnabled"></span></label>
       <p id="receive-status" role="status"></p>
       <p id="receive-progress" class="mono" aria-live="off"></p>
+      <p id="block-progress" class="mono" aria-live="polite"></p>
       <h3 data-i18n="liveTitle"></h3>
       <output id="live" class="live-text" aria-live="polite"></output>
       <h3 data-i18n="graphTitle"></h3>
@@ -148,10 +148,10 @@
           <h3 data-i18n="regionTitle"></h3>
       <p class="muted" data-i18n="regionNote"></p>
       <div class="region-controls">
-        <div class="field"><label for="roi-x" data-i18n="roiX"></label><input id="roi-x" type="range" min="0" max="90" value="30"></div>
-        <div class="field"><label for="roi-y" data-i18n="roiY"></label><input id="roi-y" type="range" min="0" max="90" value="30"></div>
-        <div class="field"><label for="roi-w" data-i18n="roiW"></label><input id="roi-w" type="range" min="10" max="100" value="40"></div>
-        <div class="field"><label for="roi-h" data-i18n="roiH"></label><input id="roi-h" type="range" min="10" max="100" value="40"></div>
+        <div class="field"><label for="roi-x" data-i18n="roiX"></label><input id="roi-x" type="range" min="0" max="90" value="0"></div>
+        <div class="field"><label for="roi-y" data-i18n="roiY"></label><input id="roi-y" type="range" min="0" max="90" value="0"></div>
+        <div class="field"><label for="roi-w" data-i18n="roiW"></label><input id="roi-w" type="range" min="10" max="100" value="100"></div>
+        <div class="field"><label for="roi-h" data-i18n="roiH"></label><input id="roi-h" type="range" min="10" max="100" value="100"></div>
       </div>
       <p id="region-value" class="mono"></p>
       <button id="region-reset" type="button" data-i18n="regionReset"></button>
@@ -165,7 +165,7 @@
       <h2 id="result-title"><span class="number">05</span> <span data-i18n="results"></span></h2>
       <output id="result-text" class="live-text"></output>
       <dl class="result-grid">
-        <div><dt>CRC-8</dt><dd id="crc">—</dd></div>
+        <div><dt>CRC-16 / CRC-8</dt><dd id="crc">—</dd></div>
         <div><dt data-i18n="frameCheck"></dt><dd id="frame-check">—</dd></div>
         <div><dt data-i18n="confidence"></dt><dd id="confidence">—</dd></div>
         <div id="agreement-field" hidden><dt data-i18n="agreement"></dt><dd id="agreement">—</dd></div>
@@ -177,9 +177,9 @@
       <div class="table-wrap"><table>
         <thead><tr><th data-i18n="mode"></th><th data-i18n="density"></th><th data-i18n="conditions"></th></tr></thead>
         <tbody>
-          <tr><th data-i18n="mono"></th><td>1 bit/pair</td><td data-i18n="monoTradeoff"></td></tr>
-          <tr><th data-i18n="bicolor"></th><td>1 bit/pair</td><td data-i18n="bicolorTradeoff"></td></tr>
-          <tr><th data-i18n="color"></th><td>3 bit/pair</td><td data-i18n="colorTradeoff"></td></tr>
+          <tr><th data-i18n="dataPanels"></th><td>1 bit/symbol</td><td data-i18n="dataTradeoff"></td></tr>
+          <tr><th data-i18n="clockPanels"></th><td>0 bit</td><td data-i18n="clockTradeoff"></td></tr>
+          <tr><th data-i18n="referenceBorder"></th><td>0 bit</td><td data-i18n="referenceTradeoff"></td></tr>
         </tbody>
       </table></div>
     </section>

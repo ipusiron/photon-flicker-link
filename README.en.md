@@ -8,8 +8,8 @@ title: "Photon Flicker Link"
 subtitle_ja: "光で短文を送り、カメラとグラフで通信を観察"
 subtitle_en: "Send short text through light and observe the camera signal"
 
-description_ja: "画面の明滅をカメラで読み取り、最大8バイトの文字列へ復元する教材。モノクロ・青赤2色・RGB並列変調、時系列グラフ、ライブ復号、ローカル動画の解析に対応します。"
-description_en: "A local optical communication lesson with binary monochrome, blue/red and parallel RGB signaling, camera traces, live decoding, CRC-8 and offline video analysis, for up to 8 UTF-8 bytes."
+description_ja: "明暗の対と専用クロックで1ビットずつ送り、カメラで最大8バイトの文字列へ復元する教材。時系列グラフ、ブロック訂正、ローカル動画の解析に対応します。"
+description_en: "A serial optical link using grayscale pairs and a separate clock, with block correction, camera traces and local video analysis for up to 8 UTF-8 bytes."
 
 category_ja:
   - プライバシー
@@ -44,7 +44,9 @@ hub: true
 
 **Day122 - 200 Security Tools Built with Generative AI**
 
-This educational tool reads screen flicker with a camera and reconstructs short text. A camera view, brightness or color traces, and live decoded characters show how communication succeeds or fails.
+This educational tool reads screen flicker with a camera and reconstructs short text.
+V3 sends one bit at a time using simultaneous grayscale pairs and a separate clock.
+The camera view, data and clock traces, and decoded text show how communication succeeds or fails.
 
 English | [日本語](README.md)
 
@@ -58,17 +60,17 @@ No installation is required. Defaults are binary monochrome, 2 symbol/s, low con
 
 > ![Text input and active signal area](assets/en/send.png)
 >
-> *Sending LIGHT in monochrome. Transmission finishes after one packet.*
+> *Sending LIGHT with grayscale pairs and a separate clock. Transmission finishes after one packet.*
 
 > ![Camera region and signal traces](assets/en/receive.png)
 >
-> *A synthetic video arrives through a virtual camera, with LI decoded so far. This is not a physical camera photograph.*
+> *A synthetic video arrives through a virtual camera, with text decoded by block. This is not a physical camera photograph.*
 
 > ![LIGHT result with a passing CRC](assets/en/result.png)
 >
-> *Offline video decoding recovers LIGHT and passes CRC, end-marker and UTF-8 checks.*
+> *Offline video decoding recovers LIGHT and passes CRC and UTF-8 checks.*
 
-> ![Lesson comparing flicker and QR density](assets/en/lesson.png)
+> ![Lesson about temporal optical communication](assets/en/lesson.png)
 >
 > *Eight lessons include tables and links to primary sources.*
 
@@ -76,21 +78,27 @@ No installation is required. Defaults are binary monochrome, 2 symbol/s, low con
 
 Flashing light can trigger photosensitive seizures (PSE) or discomfort. Consider people nearby and stop if you feel unwell. Low speed and low contrast do not guarantee safety. The author does not encourage misuse.
 
-1. Open the demo on two devices and select Monochrome on both. Adjust brightness while watching the receiver and avoid reflections.
+1. Open the demo on two devices. Reload both if you previously used V1 or V2. Adjust brightness while watching the receiver and avoid reflections.
 2. Choose Receive only on the receiver, press Test camera, and allow camera access. Check the camera name, resolution, sampled fps and video. Enable Show video preview if it is off.
 3. If there are multiple cameras, choose one under Camera to use. You can switch during testing. Use Refresh list if a connected camera is missing.
-4. Press Start reception on the receiver. Keep the devices still, with the measurement rectangle entirely inside the sender's signal area.
-5. Choose Send only on the sender and start with `A`. After ③ → ② → ① → Start, transmission begins. The defaults take 3 seconds of preparation plus 51 seconds of transmission. Start reception first and finish transmission within the 120-second reception limit.
-6. Watch the live characters and trace. Check CRC, end marker and UTF-8 at the end. Treat text from failed checks as unverified.
+4. Press Start reception. Fit the entire sending panel, including its fixed black and white frame, inside the measurement rectangle. Keep all four bars side by side and the devices still.
+5. Choose Send only and start with `A`. Transmission begins after ③ → ② → ① → Start. Defaults take 3 seconds of preparation plus 41 seconds of transmission. Start reception first.
+6. Watch the data and clock traces and text appearing by block. Check CRC and UTF-8 at the end. Treat text from failed checks as unverified.
 7. Use Stop to interrupt, or Clear display to remove the result and measurements.
 
 Selecting Receive only does not start the camera or signal display. Press Start reception and grant permission to begin video, the trace and live decoding. Turning Show video preview off hides only the preview. On wide screens, rectangle controls sit to the right of the video; on narrow screens, they follow the video, live text and trace.
 
-Camera testing checks frame capture without decoding. Stop test, hiding the tab, or the 120-second limit releases the camera. Start reception during testing uses the same camera and starts a new reception time limit. Switching cameras during reception releases the old camera and restarts synchronization and decoding. Camera names and the selected device are not saved.
+Camera testing checks frame capture without decoding.
+Opening has a 30-second limit; reception lasts at most 240 seconds after the first captured frame.
+Stop test, hiding the tab or reaching the deadline releases the camera.
+Starting reception during testing uses the same device with a fresh time allowance.
+Switching cameras releases the old camera and restarts synchronization and decoding. Camera names and selection are not saved.
 
 Camera lists and names may be incomplete before permission is granted. An empty list alone does not prove that no camera is connected. Testing distinguishes permission denial, no camera, a camera that cannot be opened, and an unavailable selected device. Successful frame capture does not guarantee optical communication.
 
-For color, select Color on both devices and receive the calibration at the beginning. Faster rates, color, two-color, high contrast, and transmission with reduced motion enabled require a confirmation dialog. There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
+The public interface offers one grayscale signaling method.
+Faster rates, high contrast and transmission with reduced motion enabled require confirmation.
+There is no full-screen mode or automatic retransmission. Hiding the tab stops the session without automatic resumption.
 
 To inspect a recording on one device, choose Offline decoding and select a video of this tool's transmission. The file must be browser-playable, such as MP4 or WebM, no larger than 128 MiB and no longer than 120 seconds. Character agreement and error rate appear only when you supply the expected text. This is not a general video-to-text extractor. The tool has no recording function.
 
@@ -100,69 +108,94 @@ To inspect a recording on one device, choose Offline decoding and select a video
 |---|---|
 | Roles | Send only, Receive only, Offline decoding |
 | Cameras | List and refresh, device selection, video/resolution/fps test; switching releases the previous camera |
-| Monochrome | Dark–bright = 0; bright–dark = 1. One bit per two-symbol pair |
-| Two colors | Blue–red = 0; red–blue = 1. One bit per pair, comparing linearized R/(R+B) |
-| Color | Complementary pairs per RGB channel, totaling 3 bits/pair; baseline and RGB calibration |
-| Measurement rectangle | Drag or use four sliders; changes restart synchronization |
-| Trace | Linearized brightness, red/blue ratio or calibrated RGB; pair decision positions; distinct line styles |
-| Confidence | Pair contrast and noise margin, not a probability of correctness |
+| Data pair | Left dark/right bright = 0; the reverse = 1. Compare within the same camera image |
+| Separate clock | The other two bars exchange brightness at every boundary, including repeated data bits |
+| Fixed frame | Locates the bars and supplies brightness references; carries no payload |
+| Measurement rectangle | Search area enclosing the entire panel; corner resizing, moving and four sliders |
+| Trace | Simultaneous data and clock differences with distinct line styles |
+| Confidence | Brightness difference, noise and agreement across frames; not a probability of correctness |
 | `?` | A character containing low-confidence or missing symbols |
-| CRC-8 | Checks transmission errors; no encryption, sender authentication or error correction |
+| CRC | CRC-8 per block and CRC-16 for the whole message; separate from encryption, authentication and error correction |
 | Agreement | Offline with known text only: matching Unicode characters at the same positions divided by the longer character count |
-| Environment | Sampling fps, rVFC/rAF, resolution, API reports for exposure/WB locking, estimated period |
+| Environment | Sampling fps, rVFC/rAF, resolution, exposure/WB API reports and estimated period |
 
-Exposure requests apply manual mode before exposure time; white balance (WB) is requested separately. Analysis continues if controls are unsupported or rejected, with the state shown on screen. The preamble acquires synchronization; subsequent pairs compare their two halves. This handles shared gain changes but cannot remove every effect of automatic camera adjustment.
+Reception does not automatically switch exposure or white balance (WB) to manual mode.
+It reports automatic, manual or unsupported settings and compares brightness within the same frame.
+Exchanging each pair's levels keeps the panel's average brightness constant.
+Clipping and reflections that affect different parts of the panel remain possible.
 
-### Version 2: synchronization and correction
+### V3 preserves one-bit serial communication
 
-Reload the page on both devices. V2 is incompatible with legacy transmissions and recordings. The default 2 symbol/s still means two physical display updates per second. Each bit takes two symbols: 8 bytes take 107 seconds in monochrome or blue/red, or 47 seconds in RGB color, plus the separate three-second countdown.
+V3 is incompatible with V1/V2 transmissions and recordings.
+The panel contains two data bars and two clock bars, for four bars in total.
+Only one payload bit is sent at each instant, and reconstructing text requires a sequence of observations.
+It does not transfer data using QR, animated QR, color codes or a custom two-dimensional barcode.
+The fixed frame locates the bars; it does not arrange message bits across a spatial data grid.
 
-- Repeated values: dark–bright or blue–red means 0; the reverse means 1. Every pair has a midpoint transition, used to update timing from recent observations.
-- Brightness changes: compare the two halves of each pair. Pairs that fail contrast and noise requirements, including a six-noise-span check, become erasures.
-- Short errors and gaps: extended Hamming(8,4) protects length. Two RS parity bytes protect payload and CRC, correcting one erroneous byte or up to two bytes with known missing positions.
-- Failed reception: continue searching for a new preamble within the original 120-second session limit. The sender never repeats automatically. Restart reception too if a new transmission would exceed the remaining session time.
+- Repeated values: the clock pair changes even when the data pair stays the same, marking the next bit.
+- Brightness changes: compare two bars in the same image, normalized against the fixed frame. Missing contrast is not guessed.
+- Short blocks: split the payload into chunks of up to four bytes. Each has synchronization, an index, total length, identity, CRC-8 and two RS parity bytes.
+- Correction bounds: extended Hamming(8,4) protects the header. Each block's RS code corrects one erroneous byte or up to two bytes with known missing positions.
+- Reception failure: abandon an uncorrectable block and keep searching for synchronization. Retain checked blocks and fill gaps from retransmission of the same content.
+- Completion: check block CRC-8, whole-message CRC-16 and UTF-8. A separate unprotected end-color marker does not decide acceptance.
 
-Correction counts and CRC are shown separately. Live text is provisional and can change after final correction. Errors beyond coding capacity are not always detectable, and CRC-8 can miss errors. See the [wire format and receiver details](docs/protocol-v2.md). The legacy synthetic comparison remains a regression test, not a V2 or physical success rate.
+Correction counts and CRC are displayed separately. Live text updates as checked blocks become available.
+CRC and identity values can collide, and errors beyond the correction capacity are not all detectable.
+See the [wire format and receiver details](docs/protocol-v3.md).
 
 ### When reception is unstable
 
-Make the rectangle slightly smaller than the flickering area and keep it entirely inside that area. If the signal occupies only part of the rectangle, background colors dilute the measured average. Drag a corner to resize, inside to move, or from outside to draw a new rectangle. The outline follows the gesture; releasing applies the sampling region and restarts synchronization. Sliders provide the same adjustment.
+Fit the entire sending panel, including the fixed black and white frame, inside the measurement rectangle.
+Showing only some bars is insufficient to locate the panel and its references.
+Drag a corner to resize, inside to move or from outside to create a new rectangle.
+Releasing applies the search area and restarts synchronization. Sliders provide the same adjustment.
 
-Monochrome measures a brightness difference, so dimming the sender too far reduces that difference. At the other extreme, a white, clipped signal area loses brightness and color information. Alongside the rectangle controls, the tool shows the proportions of near-white pixels, near-black pixels and pixels with any channel near maximum, plus signal range over the last two seconds. Adjust gradually while watching the receiver. These measurements guide adjustment; they do not confirm communication.
+Keep the panel large in the image, nearly front-facing and steady.
+Keep it upright with four bars side by side. A 180-degree rotation or mirrored image is not corrected automatically.
+Partial frames, steep angles, very small images and multiple candidates are rejected.
+Excessive dimming, clipping, reflections and movement can also cause failure.
+Watch the image, panel detection and data/clock differences while adjusting; lowering brightness indefinitely is not a remedy.
 
-If brightness decisions are unstable, select Two colors (blue / red) on both devices. The R/(R+B) ratio cancels a gain applied equally to red and blue. The preamble estimates the two ratio levels and timing. This is a different decoder from monochrome with colored output. Clipping, dark-image noise, changing background light and automatic color adjustments can still cause failure. CRC requirements remain unchanged. Two-color mode has the same rate as monochrome.
+On iPhone, True Tone, Night Shift and auto-brightness alter display conditions.
+For comparison experiments, record the settings and consider temporarily disabling them to hold conditions steady.
+See [Apple's instructions](https://support.apple.com/en-us/109351).
+The tool does not lock screen brightness or change camera exposure/WB to manual at reception startup.
 
-On iPhone, the brightness control changes the entire screen. True Tone, Night Shift and auto-brightness can also alter the display. For comparison experiments, record these settings and consider temporarily disabling them to hold conditions steady. See [Apple's instructions](https://support.apple.com/en-us/109351). The tool does not lock device screen brightness. Manual camera exposure and WB are requested only when the browser reports support.
+The owner reported that V2 reached Decoding but failed in monochrome and blue/red when sending from iPhone to PC/Vivaldi.
+Without physical sample traces, that failure remains unidentified. V3 physical reception is awaiting owner testing (本人確認待ち).
+Automated success does not establish that this reported problem is resolved.
 
-The owner reports that V2 reaches Decoding but does not succeed in either monochrome or blue/red. No physical reception samples have been collected, so the cause remains unidentified. iPhone hardware, Vivaldi, multiple physical cameras, distance, ambient light and actual exposure/WB locking remain awaiting owner testing (本人確認待ち).
+Above the graph, remaining time, sample count and stop reason are shown.
+Measurement stops on success or after 240 seconds and keeps the last graph.
+After stopping, press Restart reception before sending again. Resynchronization does not extend the deadline.
 
-Above the graph, remaining reception time, sampled frame count and the stop reason are shown. Measurement stops on success or at 120 seconds, keeping the last graph. Sending again does not restart the receiver. Press Restart reception before sending again.
-
-To investigate a failure, open Diagnose reception failure below the graph and choose Save reception diagnostic. It saves sample times, mean RGB and decoder events locally as JSON, excluding images, audio, camera names, device IDs and video filenames. Transmitted text may be recoverable from samples, so use test text such as `A` before sharing. Save before retrying: starting a new transmission or reception, clearing the display or reloading discards the diagnostic.
+Save reception diagnostic below the graph exports sample times, data/clock measurements and decoder events as local JSON.
+It excludes images, audio, camera names, device IDs and video filenames.
+Text may be recoverable from samples, so use test text such as `A` before sharing.
+Save before retrying: starting again, clearing the display or reloading discards the diagnostic.
 
 ## 🔬 Transfer limits and data density
 
 Camera frame rate limits transfer speed. Multiple frames are needed per symbol, and this tool rejects synchronization below 2 frames/symbol. At 30 fps, at most 15 symbol/s is a necessary condition, not a sufficient one. Exposure time, missing frames, display phase, distance, ambient light and automatic exposure/WB can impose stricter limits.
 
-Reading whole-screen flicker as one temporal channel with a camera gives a design range of a few to tens of bits per second in monochrome. This implementation offers 2/4/8 symbol/s: 1–4 coded bit/s in monochrome or two-color mode and 3–12 coded bit/s in color, including complementary halves. These are not limits on fast photodiodes or methods that decode rolling-shutter stripes.
+Reading flicker as a temporal channel with a camera gives a design range of a few to tens of bits per second in monochrome.
+This implementation offers 2/4/8 symbol/s, with one coded bit per update: 2/4/8 bit/s including redundancy.
+These are not limits on fast photodiodes or methods that decode rolling-shutter stripes.
 
-The following values are calculated for the maximum 8-byte payload. `mono` means monochrome; `bicolor` means blue/red; `color` means parallel RGB. Payload throughput is 64 bits divided by total duration, including preamble, coded length, CRC, error correction, complementary halves, end marker and color calibration. These are not physical measurements. The three-second countdown is excluded from this table.
+The table gives calculated durations for the maximum eight-byte payload; `mono` means grayscale serial signaling.
+Payload throughput is 64 bits divided by total duration, including each block's synchronization, header, identity, CRC, correction and final guard.
+The three-second countdown is separate. Actual display intervals can be slightly longer because of browser scheduling.
 
 | Mode | symbol/s | Coded rate (bit/s) | Duration for 8 bytes (s) | Payload throughput (bit/s) |
 |---|---:|---:|---:|---:|
-| mono | 2 | 1 | 107 | 0.6 |
-| mono | 4 | 2 | 53.5 | 1.2 |
-| mono | 8 | 4 | 26.75 | 2.39 |
-| bicolor | 2 | 1 | 107 | 0.6 |
-| bicolor | 4 | 2 | 53.5 | 1.2 |
-| bicolor | 8 | 4 | 26.75 | 2.39 |
-| color | 2 | 3 | 47 | 1.36 |
-| color | 4 | 6 | 23.5 | 2.72 |
-| color | 8 | 12 | 11.75 | 5.45 |
+| mono | 2 | 2 | 105 | 0.61 |
+| mono | 4 | 4 | 52.5 | 1.22 |
+| mono | 8 | 8 | 26.25 | 2.44 |
 
-Color calibration means a short message does not simply take one third of the monochrome duration. Four-level PAM remains in pure-function comparisons only and is not exposed in the UI. The [legacy synthetic comparison](docs/measurements.json) does not measure physical success rates.
-
-Space offers another way to increase density. V2 monochrome carries 1 bit per two-symbol pair and parallel RGB carries 3, while QR Version 1-L holds up to 17 bytes = 136 bits in one image in byte mode. QR uses finder patterns, alignment patterns from Version 2 onward, and Reed-Solomon correction. The approximate L/M/Q/H values of 7/15/25/30% concern codewords, not guaranteed recovery of the same image area. Two-dimensional density is useful for practical screen transfers. See DENSO WAVE's [capacity reference](https://www.qrcode.com/en/about/version.html) and [error correction explanation](https://www.qrcode.com/en/about/error_correction.html).
+The four bars provide complementary data and clock pairs.
+The tool does not add parallel payload cells or place a whole message in one image.
+Legacy monochrome, blue/red, RGB and four-level PAM remain in pure-function regression tests only.
+The [legacy synthetic comparison](docs/measurements.json) is not a V3 or physical success rate.
 
 ## 🔄 Comparison with other air-gap channels
 
@@ -170,7 +203,7 @@ Each study uses different transmitters, receivers and conditions. Distances depe
 
 | Method | Channel and receiver | Reported throughput | Reported distance | Example restriction and source |
 |---|---|---|---|---|
-| Photon Flicker Link | Screen → camera | mono 1–4 bit/s; color 3–12 bit/s (including redundancy) | Awaiting owner testing | Block light; manage screen/camera placement. Calculated implementation rates |
+| Photon Flicker Link | Screen → camera | 2–8 bit/s (including redundancy) | Awaiting owner testing | Block light; manage screen/camera placement. Calculated implementation rates |
 | LED-it-GO | HDD LED → photodiode / camera | 4000 bit/s / 15–120 bit/s | Optical sensor: 3–5 m indoors, 20 m outdoors at night. Camera: 8 m | Cover LEDs; block line of sight. [Paper](https://arxiv.org/abs/1702.06715) |
 | Acoustic (Day120 / ggwave reference) | Speaker → microphone | ggwave: 8–16 B/s. Day120: 1.25–11.08 B/s (calculated for 256 bytes) | ggwave: about 1 m, developer report. Day120: unmeasured | Manage acoustic paths and microphones. [ggwave](https://github.com/ggerganov/ggwave#details), [Day120](https://github.com/ipusiron/airborne-tone-link) |
 | MAGNETO / ODINI | CPU magnetic field → phone magnetometer / dedicated sensor | 0.2–5 bit/s / 40 bit/s | 0–12 cm / 100–150 cm | Manage distance and magnetic sensors. [MAGNETO paper](https://arxiv.org/abs/1802.02317); ODINI values are quoted via its table, original paper not checked |
@@ -186,9 +219,9 @@ Line of sight (LOS) and suitable optics can allow distant observation. LED-it-GO
 
 Ways of using this tool in particular
 
-- In an information-science class, compare `A` (1 byte, 51 s), `LIGHT` (5 bytes, 83 s), and `日本` (6 bytes, 91 s) to explore how UTF-8 byte count differs from character count. These are calculated monochrome durations at 2 symbol/s, excluding the three-second countdown.
-- In a communication-design lesson, compare 107 seconds for 8 monochrome bytes with 47 seconds in color to separate parallel-channel gains from calibration costs. Physical success also depends on color separation and ambient light.
-- A video-production practitioner can move the measurement region within the emitter or include some background, then observe pair contrast and confidence. Camera RGB values are relative; this is not a lux meter or colorimeter.
+- Compare `A` (1 byte, 41 s), `LIGHT` (5 bytes, 93 s), and `日本` (6 bytes, 97 s) to explore how byte count and block count affect duration. These calculations use 2 symbol/s and exclude the three-second countdown.
+- Observe the separate clock changing while repeated data bits leave the data pair unchanged. The four bars carry one payload bit at each instant.
+- Keep the full panel in the measurement rectangle and vary distance or angle while observing detection and brightness differences. Measurements are relative camera values, not readings from a lux meter.
 - A puzzle designer can send `LIGHT` and show its reconstruction. A receiver that knows the format can recover it, so this does not protect a secret password.
 
 General learning and creative uses
@@ -228,11 +261,15 @@ Run with Node.js 22 or later, without installing dependencies:
 npm test
 ```
 
-Tests cover conversions, CRC, known answers, synchronization, clock skew, color calibration, uncertainty, interruption, dictionaries, CSP, contrast, README values and images. GitHub Actions runs syntax checks and the same tests on push and pull_request.
+Tests cover conversions, CRC, known answers, independent clocks, block correction, panel detection, actual paint intervals and interruption.
+They also check dictionaries, CSP, README values and images, while retaining legacy comparisons.
+GitHub Actions runs syntax checks and the same tests on push and pull_request.
 
 With an existing Python Playwright and FFmpeg installation, `python -X utf8 test/browser.py` checks HTTP/file UI, virtual cameras, video decoding, rAF, hidden-tab stops and denied permission. Add `--screenshots` to capture README images, or `--url https://ipusiron.github.io/photon-flicker-link/` to check the public page.
 
-Virtual-camera and video tests recover `LIGHT` in monochrome and color; rAF also passes CRC. The [verification record](docs/verification.md) gives measurements and limitations. **Physical two-device tests, distance, ambient light, device variation, and effective exposure/WB locking are awaiting owner testing (本人確認待ち).**
+The [verification record](docs/verification.md) separates measurements by protocol and lists outstanding checks.
+**V3 physical two-device communication, distance, ambient light, device variation and effective exposure/WB behavior await owner testing (本人確認待ち).**
+The reported V2 iPhone-to-PC/Vivaldi failure has not yet been confirmed resolved on hardware.
 
 ## 📁 Directory structure
 
@@ -247,6 +284,8 @@ photon-flicker-link/          # Project
 ├── style.css                # Themes and responsive layout
 ├── codec-core.js            # Pure encoding, calibration and decoding
 ├── reliable-codec.js        # V2 paired signaling, correction and clock tracking
+├── spatial-codec.js         # V3 separate clock and block decoding
+├── optical-panel.js         # Fixed frame and four-bar rendering/detection
 ├── camera-io.js             # Camera/video lifecycle and sampling
 ├── screen-tx.js             # Finite screen transmission
 ├── app.js                   # DOM, traces and roles
@@ -269,10 +308,14 @@ photon-flicker-link/          # Project
 ├── docs/                    # Verification material
 │   ├── measurements.json    # Synthetic comparison
 │   ├── protocol-v2.md       # V2 wire format and decision rules
+│   ├── protocol-v3.md       # V3 serial signaling and block format
 │   └── verification.md      # Results and physical-test checklist
 └── test/                    # Automated verification
     ├── codec.test.js        # Pure functions and synthetic conditions
     ├── reliable.test.js     # V2 known answers, gaps, clocks and gain changes
+    ├── spatial.test.js      # V3 synchronization, blocks, retries and rejection
+    ├── panel.test.js        # Panel position, gain, cropping and angle
+    ├── channel.test.js      # Rendering through simulated capture and decoding
     ├── io.test.js           # IO lifecycle and interruption
     ├── structure.test.js    # HTML, CSP, dictionaries and contrast
     ├── readme.test.js       # Values, metadata, images and structure
@@ -283,7 +326,10 @@ photon-flicker-link/          # Project
 
 A browser with JavaScript and Canvas is required. The sending, lesson and offline-decoding UI works when opening `index.html` directly. Use HTTPS or localhost for camera access and grant browser permission. For local HTTP, run `python -m http.server 8000 --bind 127.0.0.1`.
 
-The tool uses video-frame timestamps with rVFC when available, otherwise rAF sampling. rAF timestamps and fps are estimates and do not guarantee rVFC precision. Camera, codec and exposure/WB support depend on the device. UI checks and every transmitted color from Start through automatic completion are verified in Chromium and Firefox; video/virtual-camera reception checks use Chromium. Physical Safari testing has not been performed.
+The tool uses video-frame timestamps with rVFC when available, otherwise rAF sampling.
+If live mediaTime stops advancing while presented frames increase, it uses capture or presentation time anchored on the same frame.
+rAF timestamps and fps are estimates and do not guarantee rVFC precision.
+Camera, codec and exposure/WB support depend on the device. Physical Safari testing has not been performed.
 
 ## 📄 License
 
