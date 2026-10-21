@@ -239,7 +239,7 @@ canvas {
 .card canvas[id="tx"] {
   max-width: 640px;
   height: auto;
-  aspect-ratio: 32 / 15;
+  aspect-ratio: 8 / 3;
   margin-inline: auto;
 }
 .card canvas[id="preview"] {

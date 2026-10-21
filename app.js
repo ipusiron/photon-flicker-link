@@ -1,7 +1,7 @@
 /* Photon Flicker Link - MIT (c) 2026 ipusiron. */
 (function () {
   'use strict';
-  const C = window.PhotonReliable, M = window.PhotonMessages;
+  const C = window.PhotonSpatial, M = window.PhotonMessages;
   const $ = id => document.getElementById(id);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const dark = matchMedia('(prefers-color-scheme: dark)');
@@ -13,22 +13,22 @@
   let theme = stored('theme');
   if (!['light', 'dark'].includes(theme)) theme = dark.matches ? 'dark' : 'light';
   let busy = false, generation = 0, decoder = null, result = null, sync = null, environment = null;
-  let currentRole = 'send', currentMode = 'mono', expected = '', status = 'idle', error = '', live = '';
-  let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region();
+  let currentRole = 'send', expected = '', status = 'idle', error = '', live = '';
+  let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region({ x: 0, y: 0, w: 1, h: 1 });
   let lessonLanguage = null, dragStart = null, dragRegion = null;
   let testingCamera = false, cameras = [], selectedCameraId = '', cameraCheck = null;
-  let countdownValue = null, quality = null, qualityTrace = [];
+  let countdownValue = null, quality = null, blockProgress = null;
   let receiveProgress = null, retries = 0, retryReason = '';
   let capture = null, receiveTimer = null;
   let cameraListState = 'cameraListHint', cameraCheckState = 'cameraUnchecked', listGeneration = 0;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
-  const screen = PhotonScreen.create($('tx'));
+  const screen = PhotonScreen.create($('tx'), window, { spatial: true });
   const t = (key, values = {}) => (M[language][key] || M[language].failed).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? '');
-  const settings = () => C.config({ mode: $('mode').value, rate: Number($('rate').value), contrast: $('contrast').value });
+  const settings = () => C.config({ mode: 'mono', rate: Number($('rate').value), contrast: $('contrast').value });
   function setBusy(value) {
     busy = value;
-    ['role', 'mode', 'rate', 'contrast', 'text-input', 'video-input', 'expected', 'start'].forEach(id => { $(id).disabled = value; });
+    ['role', 'rate', 'contrast', 'text-input', 'video-input', 'expected', 'start'].forEach(id => { $(id).disabled = value; });
     $('stop').disabled = !value;
     $('start').disabled = value && !testingCamera;
     $('camera-test').disabled = value;
@@ -71,7 +71,7 @@
       width: cameraCheck.width, height: cameraCheck.height, fps: cameraCheck.fps.toFixed(1) }) : '';
     $('status').textContent = t(status);
     $('error').textContent = error ? t(error) : '';
-    $('graph-legend').textContent = t(currentMode + 'Legend');
+    $('graph-legend').textContent = t('monoLegend');
     $('tx-countdown').textContent = countdownValue === null ? '' : countdownValue ? ['①', '②', '③'][countdownValue - 1] : t('start');
     $('preview-note').textContent = t(camera.active ? testingCamera ? 'testPreviewNote' : 'activePreviewNote' :
       $('role').value === 'offline' ? 'offlinePreviewNote' : 'receivePreviewNote');
@@ -80,11 +80,11 @@
     $('receive-progress').textContent = receiveProgress ? t('receiveProgress', {
       count: receiveProgress.index + 1, total: receiveProgress.total ?? '?', retries }) :
       retries ? t('retryProgress', { retries, reason: t(retryReason) }) : '';
+    $('block-progress').textContent = blockProgress ? t('blockProgress', blockProgress) : '';
     if (quality) {
-      $('signal-health').textContent = t('signalHealth', { white: (quality.white * 100).toFixed(0),
-        dark: (quality.dark * 100).toFixed(0), clipped: (quality.clipped * 100).toFixed(0), span: quality.span.toFixed(3) });
-      $('signal-advice').textContent = t(quality.white > 0.2 ? 'signalWhite' : quality.dark > 0.2 ? 'signalDark' :
-        quality.clipped > 0.2 ? 'signalClipped' : 'signalObserve');
+      $('signal-health').textContent = t('signalHealth', { quality: (quality.quality * 100).toFixed(0),
+        data: quality.data.toFixed(3), clock: quality.clock.toFixed(3) });
+      $('signal-advice').textContent = t(!quality.found ? 'panelMissing' : quality.quality < C.CONFIDENCE ? 'panelWeak' : 'panelFound');
     }
     $('env-callback').textContent = environment?.callback ||
       ('requestVideoFrameCallback' in HTMLVideoElement.prototype ? 'rVFC' : 'rAF');
@@ -107,7 +107,7 @@
       $('agreement-field').hidden = agreement === null;
       $('agreement').textContent = agreement === null ? '—' : agreement.toFixed(1) + '% / ' + (100 - agreement).toFixed(1) + '%';
       $('diagnostics').textContent = t('symbolRow') + '\n' + result.decisions.map(d =>
-        `${d.index} / ${d.time.toFixed(3)} / ${d.values.map(v => v === null ? '?' : v).join('')} / ${d.confidence.toFixed(3)}`).join('\n');
+        `${d.index} / ${d.time.toFixed(3)} / ${d.values[0] === null ? '?' : d.values[0]} / ${d.confidence.toFixed(3)}`).join('\n');
     }
     if (txFrame) {
       $('tx-progress').textContent = t(txFrame.kind) + ` · ${txFrame.index + 1} / ${txFrame.total}`;
@@ -157,9 +157,9 @@
   function clearResult() {
     result = null; sync = null; live = ''; trace = []; marks = []; txFrame = null; environment = null; lastDraw = -Infinity;
     countdownValue = null; resetQuality();
-    receiveProgress = null; retries = 0; retryReason = '';
+    receiveProgress = null; retries = 0; retryReason = ''; blockProgress = null;
     capture = null;
-    ['result-text', 'diagnostics', 'live', 'tx-progress', 'tx-remaining', 'sample-value', 'corrections', 'receive-progress']
+    ['result-text', 'diagnostics', 'live', 'tx-progress', 'tx-remaining', 'sample-value', 'corrections', 'receive-progress', 'block-progress']
       .forEach(id => { $(id).textContent = ''; });
     ['crc', 'frame-check', 'confidence', 'agreement', 'env-fps', 'env-resolution', 'env-clock', 'env-exposure', 'env-wb']
       .forEach(id => { $(id).textContent = '—'; });
@@ -189,7 +189,7 @@
   function received(event, finishReason = 'stopped') {
     if (capture) {
       const keys = ['type', 'code', 'index', 'time', 'period', 'framesPerSymbol', 'values', 'confidence', 'clockObserved',
-        'total', 'attempts', 'crcOk', 'endOk', 'utf8Ok', 'valid', 'uncertain', 'correctedBytes', 'correctedHeaderBits'];
+        'total', 'blocks', 'attempts', 'crcOk', 'endOk', 'utf8Ok', 'valid', 'uncertain', 'correctedBytes', 'correctedHeaderBits'];
       if (event.type !== 'text' && capture.events.length < 3000) capture.events.push({
         sample: capture.samples.length, ...Object.fromEntries(keys.filter(k => k in event).map(k => [k, event[k]])) });
       else if (event.type !== 'text') capture.truncated = true;
@@ -197,11 +197,13 @@
     if (event.type === 'sync') { sync = event; status = 'decoding'; error = ''; }
     if (event.type === 'symbol') {
       marks.push(event); receiveProgress = event;
-      if (sync) { sync.period = event.period; sync.framesPerSymbol = event.period * (environment?.fps || 0); }
+      if (sync && Number.isFinite(event.period)) {
+        sync.period = event.period; sync.framesPerSymbol = event.period * (environment?.fps || 0);
+      }
     }
-    if (event.type === 'rejected') { result = event; }
+    if (event.type === 'block') blockProgress = event;
     if (event.type === 'resync') {
-      sync = null; live = ''; marks = []; receiveProgress = null; retries = event.attempts;
+      sync = null; marks = []; receiveProgress = null; retries = event.attempts;
       retryReason = event.code; status = 'resynchronizing';
     }
     if (event.type === 'text' && event.text !== live) { live = event.text; paintText($('live'), live); }
@@ -228,7 +230,7 @@
       if (role === 'send') C.bytesOf($('text-input').value);
       if (role === 'offline') { file = $('video-input').files[0]; if (!file) throw new Error('selectFile'); }
     } catch (e) { error = e.message; render(); return; }
-    if (role === 'send' && (cfg.rate > 2 || cfg.contrast === 'high' || cfg.mode !== 'mono' || reduced.matches)) {
+    if (role === 'send' && (cfg.rate > 2 || cfg.contrast === 'high' || reduced.matches)) {
       $('warning-dialog').showModal();
       return;
     }
@@ -236,7 +238,7 @@
   }
   async function begin(role, cfg, file) {
     if (busy) return;
-    clearResult(); error = ''; currentRole = role; currentMode = cfg.mode; expected = $('expected').value;
+    clearResult(); error = ''; currentRole = role; expected = $('expected').value;
     const ticket = ++generation;
     setBusy(true);
     status = role === 'send' ? 'preparing' : 'receiving';
@@ -251,20 +253,20 @@
           stop(reason);
         }, { countdown: 3, onCountdown(value) { countdownValue = value; render(); } });
       } else {
-        capture = { format: 'photon-flicker-link-diagnostic-v1', protocol: 2, role, mode: cfg.mode,
+        capture = { format: 'photon-flicker-link-diagnostic-v2', protocol: 3, role, mode: cfg.mode,
           samples: [], events: [], regions: [{ sample: 0, ...selectedRegion }], truncated: false, stopReason: null };
         decoder = C.createDecoder(cfg);
         receiveTimer = setInterval(renderReceiveState, 250);
         $('video-input').value = '';
-        await camera.start({ file, deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
+        await camera.start({ spatial: true, file, deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
           if (ticket !== generation) return;
           if (role === 'receive') { cameraCheck = frame.stats; cameraCheckState = 'cameraReceiving'; }
           environment = frame.stats;
           recordFrame(frame);
-          updateQuality(frame, cfg.mode);
+          updateQuality(frame);
           trace.push({ time: frame.time, rgb: frame.rgb });
           if (trace.length > 900) trace.shift();
-          decoder.push(frame.time, frame.rgb).forEach(event => received(event));
+          decoder.push(frame.time, frame.optical).forEach(event => received(event));
           if (ticket !== generation) return;
           if (frame.time - lastDraw >= (reduced.matches ? 1 : 0.09)) {
             lastDraw = frame.time; drawPreview(); drawGraph(); render();
@@ -311,15 +313,16 @@
   }
   async function testCamera() {
     if (busy) return;
+    currentRole = 'receive';
     const ticket = ++generation;
     testingCamera = true; cameraCheck = null; cameraCheckState = 'cameraOpening'; error = ''; resetQuality();
     setBusy(true); status = 'cameraOpening'; render();
     let paintedAt = -Infinity;
     try {
-      await camera.start({ deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
+      await camera.start({ spatial: true, deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
         if (ticket !== generation) return;
         cameraCheck = frame.stats; cameraCheckState = 'cameraTesting'; status = 'cameraTesting';
-        updateQuality(frame, $('mode').value);
+        environment = frame.stats; updateQuality(frame);
         if (frame.time - paintedAt >= (reduced.matches ? 1 : 0.09)) {
           paintedAt = frame.time; drawPreview(); render();
         }
@@ -331,7 +334,7 @@
     }
   }
   function resetQuality() {
-    quality = null; qualityTrace = [];
+    quality = null;
     $('signal-health').textContent = ''; $('signal-advice').textContent = '';
   }
   function renderReceiveState() {
@@ -345,15 +348,19 @@
   }
   function recordFrame(frame) {
     if (!capture) return;
-    // Retain measured RGB and relative times only. No camera identifiers, filenames, pixels or entered text.
-    if (capture.samples.length < 18000) capture.samples.push([frame.time, ...frame.rgb]);
+    // Retain optical differences and relative times only. No identifiers, filenames, pixels or entered text.
+    const optical = frame.optical || { found: false, data: 0, clock: 0, quality: 0 };
+    if (capture.samples.length < 18000) capture.samples.push([
+      frame.time, optical.data, optical.clock, optical.dataQuality ?? optical.quality,
+      optical.clockQuality ?? optical.quality, optical.found ? 1 : 0]);
     else capture.truncated = true;
-    const keys = ['fps', 'frames', 'width', 'height', 'callback', 'exposure', 'whiteBalance', 'elapsedSeconds', 'remainingSeconds'];
+    const keys = ['fps', 'frames', 'width', 'height', 'callback', 'exposure', 'whiteBalance', 'elapsedSeconds', 'remainingSeconds',
+      'timeSource', 'frameCounter', 'droppedFrames'];
     capture.environment = Object.fromEntries(keys.filter(k => k in frame.stats).map(k => [k, frame.stats[k]]));
     capture.health = Object.fromEntries(['white', 'dark', 'clipped'].map(key => [key, frame.health[key]]));
   }
   function diagnosticState(state = status) {
-    return { status: state, error, pairs: receiveProgress?.index + 1 || 0, total: receiveProgress?.total ?? null, retries };
+    return { status: state, error, bits: receiveProgress?.index + 1 || 0, blocks: blockProgress?.blocks || 0, total: receiveProgress?.total ?? null, retries };
   }
   function saveDiagnostic() {
     if (!capture?.samples.length) return;
@@ -363,11 +370,8 @@
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function updateQuality(frame, mode) {
-    qualityTrace.push({ time: frame.time, value: C.signal(frame.rgb, mode) });
-    qualityTrace = qualityTrace.filter(sample => frame.time - sample.time <= 2);
-    const values = qualityTrace.map(sample => sample.value);
-    quality = { ...frame.health, span: Math.max(...values) - Math.min(...values) };
+  function updateQuality(frame) {
+    quality = frame.optical || { found: false, data: 0, clock: 0, quality: 0 };
   }
   // The marked preview is separate from the unmarked sampling canvas.
   function drawPreview() {
@@ -383,6 +387,11 @@
       ctx.lineWidth = 2; ctx.strokeStyle = css.getPropertyValue('--roi-light'); ctx.setLineDash([8, 5]);
       ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
       ctx.setLineDash([]);
+      if (quality?.found && quality.rect) {
+        const panel = quality.rect;
+        ctx.lineWidth = 3; ctx.strokeStyle = css.getPropertyValue('--accent');
+        ctx.strokeRect(panel.x * preview.width, panel.y * preview.height, panel.w * preview.width, panel.h * preview.height);
+      }
       const size = 12 * preview.width / (preview.clientWidth || preview.width);
       for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) {
         ctx.fillStyle = css.getPropertyValue('--roi-dark');
@@ -415,15 +424,13 @@
     ctx.textAlign = 'left'; ctx.fillText(start.toFixed(1) + ' s', left, height - 9);
     ctx.textAlign = 'right'; ctx.fillText(end.toFixed(1) + ' s', right, height - 9);
     ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
-    const corrected = rgb => currentMode === 'color' && sync?.calibration ?
-      C.multiply(sync.calibration.inverse, rgb.map((v, c) => v - sync.calibration.black[c])) : rgb;
-    const channels = currentMode === 'color' ? [0, 1, 2] : [0];
+    const channels = [0, 1, 2];
     const colors = ['--plot-ink', '--plot-secondary', '--plot-tertiary'];
     channels.forEach(c => {
       ctx.strokeStyle = color(colors[c]); ctx.lineWidth = 2; ctx.setLineDash([[], [10, 5], [2, 4]][c]);
       ctx.beginPath(); let first = true;
       trace.filter(s => s.time >= start).forEach(s => {
-        const value = currentMode === 'color' ? corrected(s.rgb)[c] : C.signal(s.rgb, currentMode);
+        const value = s.rgb[c];
         if (first) ctx.moveTo(x(s.time), y(value)); else ctx.lineTo(x(s.time), y(value));
         first = false;
       });
@@ -439,9 +446,9 @@
     }
     ctx.restore();
     if (trace.length) {
-      const values = currentMode === 'color' ? corrected(trace.at(-1).rgb) : [C.signal(trace.at(-1).rgb, currentMode)];
-      const label = currentMode === 'color' ? 'RGB: ' : currentMode === 'bicolor' ? 'R/(R+B): ' : 'Y: ';
-      $('sample-value').textContent = label + values.map(v => v.toFixed(3)).join(' / ');
+      const values = trace.at(-1).rgb;
+      $('sample-value').textContent = t('sampleValue', { data: (2 * values[0] - 1).toFixed(3),
+        clock: (2 * values[1] - 1).toFixed(3), quality: values[2].toFixed(3) });
     }
   }
   function updateRegion() {
@@ -452,7 +459,7 @@
     $('region-value').textContent = Object.entries(selectedRegion).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(' · ');
     if (busy && currentRole !== 'send' && !testingCamera) {
       decoder?.clear(); decoder = C.createDecoder(settings()); sync = null; live = ''; trace = []; marks = [];
-      receiveProgress = null; retries = 0; retryReason = ''; lastDraw = -Infinity;
+      receiveProgress = null; retries = 0; retryReason = ''; blockProgress = null; lastDraw = -Infinity;
       if (capture && capture.regions.length < 3000) capture.regions.push({ sample: capture.samples.length, ...selectedRegion });
       else if (capture) capture.truncated = true;
       status = 'receiving'; render();
@@ -465,8 +472,7 @@
   $('clear').addEventListener('click', () => { stop(); clearResult(); error = ''; status = 'idle'; render(); });
   $('receive-again').addEventListener('click', start);
   $('diagnostic-save').addEventListener('click', saveDiagnostic);
-  ['role', 'mode', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
-    if (!trace.length) currentMode = $('mode').value;
+  ['role', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
     render(); drawGraph(); drawPreview();
     if (id === 'role' && $('role').value === 'receive') refreshCameras();
   }));
@@ -495,7 +501,7 @@
   $('warning-accept').addEventListener('click', () => { $('warning-dialog').close(); begin('send', settings()); });
   ['x', 'y', 'w', 'h'].forEach(key => $('roi-' + key).addEventListener('input', updateRegion));
   $('region-reset').addEventListener('click', () => {
-    ['x', 'y', 'w', 'h'].forEach((key, i) => { $('roi-' + key).value = i < 2 ? 30 : 40; }); updateRegion();
+    ['x', 'y', 'w', 'h'].forEach((key, i) => { $('roi-' + key).value = i < 2 ? 0 : 100; }); updateRegion();
   });
   $('preview-enabled').checked = !reduced.matches;
   $('preview-enabled').addEventListener('change', drawPreview);

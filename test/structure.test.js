@@ -6,7 +6,8 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const html = read('index.html'), css = read('style.css'), M = require('../messages.js');
-const scripts = ['codec-core.js', 'reliable-codec.js', 'camera-io.js', 'screen-tx.js', 'messages.js', 'app.js'];
+const scripts = ['codec-core.js', 'reliable-codec.js', 'spatial-codec.js', 'optical-panel.js',
+  'camera-io.js', 'screen-tx.js', 'messages.js', 'app.js'];
 
 test('F: restrictive CSP, blob-only local media addition, no inline script/style/handlers', () => {
   const csp = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)[1].replace(/\s+/g, ' ');
