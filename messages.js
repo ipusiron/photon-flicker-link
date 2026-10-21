@@ -95,10 +95,33 @@
     previewLabel: ['カメラ映像と測定矩形。ドラッグで矩形を指定できます。', 'Camera view and measurement rectangle. Drag to select a region.'],
     previewEnabled: ['映像を表示する（点滅を含みます）', 'Show video preview (contains flicker)'],
     regionTitle: ['測定枠の調整', 'Measurement rectangle'],
-    regionNote: ['送信面の内側をドラッグするか、4つのスライダーで矩形を指定します。変更すると同期をやり直します。',
-      'Drag inside the signal area or use the four sliders. Changing the rectangle restarts synchronization.'],
+    regionCoverage: ['測定枠を点滅面の内側に収め、枠全体を送信色で埋めてください。',
+      'Keep the rectangle inside the flickering area, filling the entire rectangle with the transmitted color.'],
+    regionNote: ['枠のほぼ全体を、点滅している送信面だけで埋めてください。送信面が枠の一部に入るだけでは、背景の色が混ざります。' +
+      '四隅をドラッグすると大きさを変更し、枠内をドラッグすると移動します。枠外からドラッグすると新しい枠を作ります。' +
+      '指を離すと確定し、同期をやり直します。下のスライダーでも調整できます。',
+      'Fill almost the entire rectangle with the flickering signal area. If it occupies only part of the rectangle, background colors dilute it. ' +
+      'Drag a corner to resize, inside to move, or from outside to draw a new rectangle. ' +
+      'Release to apply and restart synchronization. The sliders provide the same adjustment.'],
     roiX: ['左端（%）', 'Left (%)'], roiY: ['上端（%）', 'Top (%)'], roiW: ['幅（%）', 'Width (%)'], roiH: ['高さ（%）', 'Height (%)'],
     regionReset: ['中央に戻す', 'Reset to center'], graphTitle: ['測定値の時系列', 'Signal over time'],
+    graphActive: ['測定中 · 自動停止まで{seconds}秒 · 採取{frames}フレーム',
+      'Measuring · stops in {seconds} s · {frames} sampled frames'],
+    graphStopped: ['測定停止：{reason}。グラフは停止時の値です。送信側だけの再送では測定を再開しません。',
+      'Measurement stopped: {reason}. The graph shows the saved samples. Sending again does not restart reception.'],
+    graphReady: ['受信開始後にグラフを更新します。受信成功または120秒で停止します。',
+      'The graph updates after reception starts. It stops on success or at 120 seconds.'],
+    graphTestOnly: ['カメラテスト中はグラフを更新しません。「受信開始」で測定します。',
+      'Camera test does not update the graph. Start reception to measure the signal.'],
+    receiveAgain: ['受信を再開（最大120秒）', 'Restart reception (up to 120 s)'],
+    diagnosticTitle: ['受信失敗の診断', 'Diagnose reception failure'],
+    diagnosticSave: ['受信診断を保存', 'Save reception diagnostic'],
+    diagnosticNote: ['今回の測定時刻・RGB平均値・判定経過をJSONで端末内に保存します。画像・音声・カメラ名は含みません。' +
+      '測定値から送信内容を復元できる場合があるため、共有する場合は「A」などのテスト文字を使ってください。' +
+      '次の送受信開始・表示の消去・ページ再読み込みで今回の診断を消去します。自動送信はしません。',
+      'Save sample times, mean RGB and decoder events locally as JSON. No images, audio or camera names are included. ' +
+      'The transmitted text may be recoverable from samples; use test text such as A before sharing. ' +
+      'Starting a new transmission or reception, clearing the display or reloading discards this diagnostic. Nothing is uploaded automatically.'],
     graphLabel: ['輝度・赤青比率・RGBの時系列、組ごとの判定位置', 'Luminance, red/blue ratio or RGB over time and pair decisions'],
     graphNote: ['縦軸は輝度・赤青比率・較正後RGB（0〜1）、横軸は秒です。縦線は組の中央、?は低確信度です。各組の前半と後半の差から判定します。',
       'Vertical: luminance, red/blue ratio or calibrated RGB (0–1). Horizontal: seconds. ' +
@@ -111,7 +134,7 @@
       'Region: near white {white}% · near black {dark}% · any channel near maximum {clipped}% · signal range over 2 s: {span}'],
     signalWhite: ['白に近い画素が多く、明暗や色の差が失われる可能性があります。送信画面の明るさを少し下げ、反射と測定枠も確認します。',
       'Many pixels are near white; brightness or color differences may be lost. Lower sender brightness slightly and check reflections and the rectangle.'],
-    signalDark: ['黒に近い画素が多くなっています。送信画面を少し明るくし、測定枠に送信面が入っているか確認します。',
+    signalDark: ['黒に近い画素が多くなっています。送信画面を少し明るくし、測定枠全体が送信面の内側にあるか確認します。',
       'Many pixels are near black. Raise sender brightness slightly and check that the rectangle is inside the signal area.'],
     signalClipped: ['一部の色が上限付近です。送信画面の明るさを少し下げてください。色の差を失うと2色・カラーでも復元できません。',
       'Some color channels are near maximum. Lower sender brightness slightly. Lost color differences cannot be recovered even in two-color or RGB mode.'],
@@ -139,7 +162,7 @@
       'Blue–red = 0; red–blue = 1. Compare red/blue ratios. 1–4 bit/s including redundancy. Clipping and color adjustments still matter'],
     lessons: ['座学', 'How it works'], helpTitle: ['使い方と読み方', 'Using the tool'],
     helpBody: ['2台で同じモードを選びます。受信側はカメラテストで映像を確認し、使うカメラを選んでから受信を開始します。' +
-      '送信画面を測定枠の内側に収め、短い文字列を1回送ります。1台では動画のオフライン復号を使えます。',
+      '測定枠全体を送信面の内側に収め、短い文字列を1回送ります。1台では動画のオフライン復号を使えます。',
       'Select the same mode on two devices. On the receiver, test the camera, choose the desired camera and start reception. ' +
       'Fill the measurement rectangle with the signal area, then send once. On one device, decode a local video.'],
     helpFailure: ['同期しないときは、画面の位置・反射・ピントを確認します。?が多ければ速度を下げ、カラーからモノクロへ戻します。CRC不一致の文字は未確認として扱います。',

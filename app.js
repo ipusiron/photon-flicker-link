@@ -15,10 +15,11 @@
   let busy = false, generation = 0, decoder = null, result = null, sync = null, environment = null;
   let currentRole = 'send', currentMode = 'mono', expected = '', status = 'idle', error = '', live = '';
   let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region();
-  let lessonLanguage = null, dragStart = null;
+  let lessonLanguage = null, dragStart = null, dragRegion = null;
   let testingCamera = false, cameras = [], selectedCameraId = '', cameraCheck = null;
   let countdownValue = null, quality = null, qualityTrace = [];
   let receiveProgress = null, retries = 0, retryReason = '';
+  let capture = null, receiveTimer = null;
   let cameraListState = 'cameraListHint', cameraCheckState = 'cameraUnchecked', listGeneration = 0;
   const sampleCanvas = $('sample'), preview = $('preview'), graph = $('graph');
   const camera = PhotonCamera.create($('source'), sampleCanvas);
@@ -75,6 +76,7 @@
     $('preview-note').textContent = t(camera.active ? testingCamera ? 'testPreviewNote' : 'activePreviewNote' :
       $('role').value === 'offline' ? 'offlinePreviewNote' : 'receivePreviewNote');
     $('receive-status').textContent = t(status);
+    renderReceiveState();
     $('receive-progress').textContent = receiveProgress ? t('receiveProgress', {
       count: receiveProgress.index + 1, total: receiveProgress.total ?? '?', retries }) :
       retries ? t('retryProgress', { retries, reason: t(retryReason) }) : '';
@@ -156,6 +158,7 @@
     result = null; sync = null; live = ''; trace = []; marks = []; txFrame = null; environment = null; lastDraw = -Infinity;
     countdownValue = null; resetQuality();
     receiveProgress = null; retries = 0; retryReason = '';
+    capture = null;
     ['result-text', 'diagnostics', 'live', 'tx-progress', 'tx-remaining', 'sample-value', 'corrections', 'receive-progress']
       .forEach(id => { $(id).textContent = ''; });
     ['crc', 'frame-check', 'confidence', 'agreement', 'env-fps', 'env-resolution', 'env-clock', 'env-exposure', 'env-wb']
@@ -165,18 +168,32 @@
   }
   function stop(reason = 'stopped') {
     generation++;
+    dragStart = null; dragRegion = null;
+    clearInterval(receiveTimer); receiveTimer = null;
     testingCamera = false;
     cameraCheckState = cameraCheck ? 'cameraChecked' : 'cameraUnchecked';
     camera.stop(); screen.stop();
+    if (capture && capture.stopReason === null) {
+      capture.stopReason = reason;
+      capture.state = diagnosticState(reason);
+    }
     if (decoder) decoder.clear();
     decoder = null;
     countdownValue = null;
     setBusy(false);
     status = reason;
     drawPreview();
+    drawGraph();
     render();
   }
-  function received(event) {
+  function received(event, finishReason = 'stopped') {
+    if (capture) {
+      const keys = ['type', 'code', 'index', 'time', 'period', 'framesPerSymbol', 'values', 'confidence', 'clockObserved',
+        'total', 'attempts', 'crcOk', 'endOk', 'utf8Ok', 'valid', 'uncertain', 'correctedBytes', 'correctedHeaderBits'];
+      if (event.type !== 'text' && capture.events.length < 3000) capture.events.push({
+        sample: capture.samples.length, ...Object.fromEntries(keys.filter(k => k in event).map(k => [k, event[k]])) });
+      else if (event.type !== 'text') capture.truncated = true;
+    }
     if (event.type === 'sync') { sync = event; status = 'decoding'; error = ''; }
     if (event.type === 'symbol') {
       marks.push(event); receiveProgress = event;
@@ -188,13 +205,15 @@
       retryReason = event.code; status = 'resynchronizing';
     }
     if (event.type === 'text' && event.text !== live) { live = event.text; paintText($('live'), live); }
-    if (event.type === 'error') { error = event.code; stop('stopped'); }
+    if (event.type === 'error') { error = event.code; stop(finishReason); }
     if (event.type === 'result') { result = event; live = event.text; stop('complete'); drawGraph(); }
   }
   function cameraStopped(reason) {
     if (!busy) return;
     if (reason === 'stopped' || reason === 'failed') return;
-    if (['videoEnded', 'timeout'].includes(reason)) { if (!testingCamera) decoder?.finish().forEach(received); }
+    if (['videoEnded', 'timeout'].includes(reason)) {
+      if (!testingCamera) decoder?.finish().forEach(event => received(event, reason === 'timeout' ? 'timeout' : 'stopped'));
+    }
     else if (reason !== 'hidden') error = reason;
     if (busy) stop(reason === 'videoEnded' ? 'complete' : ['hidden', 'timeout'].includes(reason) ? reason : 'stopped');
   }
@@ -232,16 +251,20 @@
           stop(reason);
         }, { countdown: 3, onCountdown(value) { countdownValue = value; render(); } });
       } else {
+        capture = { format: 'photon-flicker-link-diagnostic-v1', protocol: 2, role, mode: cfg.mode,
+          samples: [], events: [], regions: [{ sample: 0, ...selectedRegion }], truncated: false, stopReason: null };
         decoder = C.createDecoder(cfg);
+        receiveTimer = setInterval(renderReceiveState, 250);
         $('video-input').value = '';
         await camera.start({ file, deviceId: selectedCameraId, onStop: cameraStopped, onFrame(frame) {
           if (ticket !== generation) return;
           if (role === 'receive') { cameraCheck = frame.stats; cameraCheckState = 'cameraReceiving'; }
           environment = frame.stats;
+          recordFrame(frame);
           updateQuality(frame, cfg.mode);
           trace.push({ time: frame.time, rgb: frame.rgb });
           if (trace.length > 900) trace.shift();
-          decoder.push(frame.time, frame.rgb).forEach(received);
+          decoder.push(frame.time, frame.rgb).forEach(event => received(event));
           if (ticket !== generation) return;
           if (frame.time - lastDraw >= (reduced.matches ? 1 : 0.09)) {
             lastDraw = frame.time; drawPreview(); drawGraph(); render();
@@ -311,6 +334,35 @@
     quality = null; qualityTrace = [];
     $('signal-health').textContent = ''; $('signal-advice').textContent = '';
   }
+  function renderReceiveState() {
+    const receiving = busy && !testingCamera && currentRole !== 'send';
+    const stats = camera.info;
+    $('graph-state').textContent = receiving ? t('graphActive', {
+      seconds: Math.ceil(stats.remainingSeconds ?? C.RECEIVE_SECONDS), frames: stats.frames ?? capture?.samples.length ?? 0 }) :
+      testingCamera ? t('graphTestOnly') : trace.length ? t('graphStopped', { reason: t(capture?.stopReason || status) }) : t('graphReady');
+    $('receive-again').hidden = busy || $('role').value !== 'receive' || !capture;
+    $('diagnostic-save').disabled = !capture?.samples.length;
+  }
+  function recordFrame(frame) {
+    if (!capture) return;
+    // Retain measured RGB and relative times only. No camera identifiers, filenames, pixels or entered text.
+    if (capture.samples.length < 18000) capture.samples.push([frame.time, ...frame.rgb]);
+    else capture.truncated = true;
+    const keys = ['fps', 'frames', 'width', 'height', 'callback', 'exposure', 'whiteBalance', 'elapsedSeconds', 'remainingSeconds'];
+    capture.environment = Object.fromEntries(keys.filter(k => k in frame.stats).map(k => [k, frame.stats[k]]));
+    capture.health = Object.fromEntries(['white', 'dark', 'clipped'].map(key => [key, frame.health[key]]));
+  }
+  function diagnosticState(state = status) {
+    return { status: state, error, pairs: receiveProgress?.index + 1 || 0, total: receiveProgress?.total ?? null, retries };
+  }
+  function saveDiagnostic() {
+    if (!capture?.samples.length) return;
+    const blob = new Blob([JSON.stringify({ ...capture, state: capture.state || diagnosticState() })], { type: 'application/json' });
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = 'photon-flicker-link-diagnostic.json';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   function updateQuality(frame, mode) {
     qualityTrace.push({ time: frame.time, value: C.signal(frame.rgb, mode) });
     qualityTrace = qualityTrace.filter(sample => frame.time - sample.time <= 2);
@@ -325,12 +377,19 @@
     ctx.clearRect(0, 0, preview.width, preview.height);
     if (camera.active && $('preview-enabled').checked) {
       ctx.drawImage(sampleCanvas, 0, 0, preview.width, preview.height);
-      const { x, y, w, h } = selectedRegion;
+      const { x, y, w, h } = dragRegion || selectedRegion;
       ctx.lineWidth = 5; ctx.strokeStyle = css.getPropertyValue('--roi-dark');
       ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
       ctx.lineWidth = 2; ctx.strokeStyle = css.getPropertyValue('--roi-light'); ctx.setLineDash([8, 5]);
       ctx.strokeRect(x * preview.width, y * preview.height, w * preview.width, h * preview.height);
       ctx.setLineDash([]);
+      const size = 12 * preview.width / (preview.clientWidth || preview.width);
+      for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) {
+        ctx.fillStyle = css.getPropertyValue('--roi-dark');
+        ctx.fillRect(cx * preview.width - size / 2, cy * preview.height - size / 2, size, size);
+        ctx.strokeStyle = css.getPropertyValue('--roi-light'); ctx.lineWidth = size / 6;
+        ctx.strokeRect(cx * preview.width - size / 2, cy * preview.height - size / 2, size, size);
+      }
     } else {
       const scale = preview.width / (preview.clientWidth || preview.width);
       ctx.fillStyle = css.getPropertyValue('--muted'); ctx.font = `${14 * scale}px system-ui`;
@@ -386,18 +445,26 @@
     }
   }
   function updateRegion() {
+    dragStart = null; dragRegion = null;
     resetQuality();
     selectedRegion = camera.setRegion(Object.fromEntries(['x', 'y', 'w', 'h'].map(key => [key, Number($('roi-' + key).value) / 100])));
+    Object.entries(selectedRegion).forEach(([key, value]) => { $('roi-' + key).value = Math.round(value * 100); });
     $('region-value').textContent = Object.entries(selectedRegion).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(' · ');
     if (busy && currentRole !== 'send' && !testingCamera) {
       decoder?.clear(); decoder = C.createDecoder(settings()); sync = null; live = ''; trace = []; marks = [];
+      receiveProgress = null; retries = 0; retryReason = ''; lastDraw = -Infinity;
+      if (capture && capture.regions.length < 3000) capture.regions.push({ sample: capture.samples.length, ...selectedRegion });
+      else if (capture) capture.truncated = true;
       status = 'receiving'; render();
     }
+    drawGraph();
     drawPreview();
   }
   $('start').addEventListener('click', start);
   $('stop').addEventListener('click', () => stop());
   $('clear').addEventListener('click', () => { stop(); clearResult(); error = ''; status = 'idle'; render(); });
+  $('receive-again').addEventListener('click', start);
+  $('diagnostic-save').addEventListener('click', saveDiagnostic);
   ['role', 'mode', 'rate', 'contrast'].forEach(id => $(id).addEventListener('change', () => {
     if (!trace.length) currentMode = $('mode').value;
     render(); drawGraph(); drawPreview();
@@ -436,17 +503,62 @@
     const rect = preview.getBoundingClientRect();
     return { x: C.clamp((event.clientX - rect.left) / rect.width), y: C.clamp((event.clientY - rect.top) / rect.height) };
   }
-  preview.addEventListener('pointerdown', event => { dragStart = pointerPosition(event); preview.setPointerCapture(event.pointerId); });
-  preview.addEventListener('pointerup', event => {
-    if (!dragStart) return;
-    const end = pointerPosition(event);
-    const rect = { x: Math.min(dragStart.x, end.x), y: Math.min(dragStart.y, end.y),
-      w: Math.abs(dragStart.x - end.x), h: Math.abs(dragStart.y - end.y) };
-    dragStart = null;
-    Object.entries(rect).forEach(([key, value]) => { $('roi-' + key).value = Math.round(value * 100); });
-    updateRegion();
-  });
-  preview.addEventListener('pointercancel', () => { dragStart = null; });
+  function regionGesture(point) {
+    const { x, y, w, h } = selectedRegion, box = preview.getBoundingClientRect();
+    const corners = [['nw', x, y], ['ne', x + w, y], ['sw', x, y + h], ['se', x + w, y + h]]
+      .map(([mode, cx, cy]) => ({ mode, distance: Math.hypot((point.x - cx) * box.width, (point.y - cy) * box.height) }))
+      .sort((a, b) => a.distance - b.distance);
+    if (corners[0].distance <= 22) return corners[0].mode;
+    return point.x >= x && point.x <= x + w && point.y >= y && point.y <= y + h ? 'move' : 'new';
+  }
+  function moveRegion(event) {
+    if (!dragStart || event.pointerId !== dragStart.id) return;
+    const point = pointerPosition(event), { origin, mode, region } = dragStart;
+    const dx = point.x - origin.x, dy = point.y - origin.y;
+    if (Math.hypot(dx * preview.clientWidth, dy * preview.clientHeight) < 3 && !dragStart.moved) return;
+    dragStart.moved = true;
+    if (mode === 'move') dragRegion = { ...region,
+      x: C.clamp(region.x + dx, 0, 1 - region.w), y: C.clamp(region.y + dy, 0, 1 - region.h) };
+    else if (mode === 'new') dragRegion = PhotonCamera.region({
+      x: Math.min(origin.x, point.x), y: Math.min(origin.y, point.y), w: Math.abs(dx), h: Math.abs(dy) });
+    else {
+      const left = mode.includes('w') ? C.clamp(region.x + dx, 0, region.x + region.w - 0.1) : region.x;
+      const top = mode.includes('n') ? C.clamp(region.y + dy, 0, region.y + region.h - 0.1) : region.y;
+      const right = mode.includes('e') ? C.clamp(region.x + region.w + dx, region.x + 0.1, 1) : region.x + region.w;
+      const bottom = mode.includes('s') ? C.clamp(region.y + region.h + dy, region.y + 0.1, 1) : region.y + region.h;
+      dragRegion = { x: left, y: top, w: right - left, h: bottom - top };
+    }
+    drawPreview();
+  }
+  function startRegion(event) {
+    if (event.button !== 0 || dragStart || !camera.active || !$('preview-enabled').checked) return;
+    const origin = pointerPosition(event);
+    dragStart = { origin, mode: regionGesture(origin), region: { ...selectedRegion }, id: event.pointerId, moved: false };
+    dragRegion = { ...selectedRegion };
+    if (event.pointerId !== undefined) preview.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  preview.addEventListener('pointerdown', startRegion);
+  preview.addEventListener('pointermove', moveRegion);
+  function finishRegion(event) {
+    if (!dragStart || event.pointerId !== dragStart.id) return;
+    moveRegion(event);
+    const value = dragStart.moved ? dragRegion : null;
+    dragStart = null; dragRegion = null;
+    if (event.pointerId !== undefined && preview.hasPointerCapture(event.pointerId)) preview.releasePointerCapture(event.pointerId);
+    if (value) {
+      Object.entries(value).forEach(([key, v]) => { $('roi-' + key).value = Math.round(v * 100); }); updateRegion();
+    } else drawPreview();
+  }
+  preview.addEventListener('pointerup', finishRegion);
+  // Some touch-enabled browser contexts emit mouse events without their pointer counterparts.
+  // A pointer gesture already in progress suppresses duplicate compatibility mouse events.
+  preview.addEventListener('mousedown', startRegion);
+  window.addEventListener('mousemove', event => { if (dragStart?.id === undefined) moveRegion(event); });
+  window.addEventListener('mouseup', event => { if (dragStart?.id === undefined) finishRegion(event); });
+  const cancelDrag = () => { dragStart = null; dragRegion = null; drawPreview(); };
+  preview.addEventListener('pointercancel', cancelDrag);
+  preview.addEventListener('lostpointercapture', () => { if (dragStart) cancelDrag(); });
   window.addEventListener('resize', () => { drawGraph(); drawPreview(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && busy) stop('hidden'); });
   window.addEventListener('pagehide', () => stop('stopped'));

@@ -91,6 +91,33 @@ function mockStream(id) {
   return { track, getTracks: () => [track], getVideoTracks: () => [track] };
 }
 
+test('Reception deadline, sampled frame count and restart are independent of packet attempts', async () => {
+  const f = readyCameraFixture(), stops = [], frames = [];
+  let now = 1000;
+  f.host.performance.now = () => now;
+  f.host.navigator.mediaDevices.getUserMedia = async () => mockStream('camera');
+  const camera = Camera.create(f.video, f.canvas, f.host);
+  await camera.start({ onFrame: frame => frames.push(frame), onStop: reason => stops.push(reason) });
+  f.video.currentTime = 0.1; f.tick(0);
+  now += 54000;
+  f.video.currentTime = 54.1; f.tick(0);
+  assert.equal(camera.info.remainingSeconds, 66);
+  assert.equal(camera.info.frames, 2);
+  assert.equal(frames.at(-1).stats.elapsedSeconds, 54);
+  now += 66000; f.timeout();
+  assert.deepEqual(stops, ['timeout']);
+  assert.equal(camera.active, false);
+  assert.equal(camera.info.remainingSeconds, 0);
+  now += 30000;
+  assert.equal(camera.info.elapsedSeconds, 120);
+  await camera.start({ onFrame: frame => frames.push(frame) });
+  assert.equal(camera.info.remainingSeconds, 120);
+  assert.equal(camera.info.frames, 0);
+  f.video.currentTime = 0.1; f.tick(0);
+  assert.equal(camera.info.frames, 1);
+  camera.stop();
+});
+
 test('Switching cameras releases the old track before requesting the exact new device', async () => {
   const f = readyCameraFixture(), first = mockStream('front'), second = mockStream('usb'), calls = [];
   f.host.navigator.mediaDevices.getUserMedia = async constraints => {

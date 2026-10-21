@@ -582,6 +582,142 @@ def fallback_and_safety(p, url, report):
     browser.close()
 
 
+def drag_region(page, engine):
+    preview = page.locator('#preview')
+    preview.evaluate('''el => {window.roiEvents=[];
+      for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture','mousedown','mousemove'])
+        el.addEventListener(type,e=>roiEvents.push([type,e.clientX,e.clientY,e.pointerId,e.button]));}''')
+    def values():
+        return [int(page.locator('#roi-' + key).input_value()) for key in ['x','y','w','h']]
+    def drag(origin, end):
+        preview.scroll_into_view_if_needed()
+        box = preview.bounding_box()
+        point = lambda p: (box['x'] + p[0] * box['width'], box['y'] + p[1] * box['height'])
+        old_values, old_image = values(), preview.evaluate('(el) => el.toDataURL()')
+        page.mouse.move(*point(origin)); page.mouse.down()
+        page.mouse.move(*point(end), steps=5)
+        assert values() == old_values, 'Crop must change only on release'
+        assert preview.evaluate('(el) => el.toDataURL()') != old_image, {
+            'error':'No live drag feedback','engine':engine,'origin':origin,'end':end,
+            'enabled':page.locator('#preview-enabled').is_checked(),'events':page.evaluate('() => roiEvents.slice(-15)'),
+            'box':box,'hit':page.evaluate('p => document.elementFromPoint(...p)?.outerHTML.slice(0,150)',point(origin))}
+        page.mouse.up()
+    for origin, end, expected in [((.3,.3),(.2,.2),[20,20,50,50]),
+            ((.7,.3),(.8,.2),[30,20,50,50]), ((.3,.7),(.2,.8),[20,30,50,50]),
+            ((.7,.7),(.8,.8),[30,30,50,50])]:
+        page.click('#region-reset'); drag(origin,end)
+        assert values() == expected, values()
+    page.click('#region-reset'); drag((.5,.5),(.4,.4))
+    assert values() == [20,20,40,40], values()
+    drag((.4,.4),(.95,.95))
+    assert values() == [60,60,40,40], values()
+    page.click('#region-reset'); drag((.05,.05),(.25,.25))
+    assert values() == [5,5,20,20], values()
+    before = values(); preview.click(position={'x':10,'y':10})
+    assert values() == before, 'A click must not replace the rectangle'
+    page.click('#region-reset')
+    if engine == 'chromium':
+        preview.scroll_into_view_if_needed()
+        box = preview.bounding_box(); session = page.context.new_cdp_session(page)
+        for kind, x, y in [('touchStart',.7,.7),('touchMove',.8,.8)]:
+            session.send('Input.dispatchTouchEvent',{'type':kind,'touchPoints':[
+                {'x':box['x']+x*box['width'],'y':box['y']+y*box['height']} ]})
+        session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+        assert values() == [30,30,50,50], values()
+        session.detach(); page.click('#region-reset')
+
+
+def reception_diagnostics(p, url, report):
+    for engine in [p.chromium, p.firefox, p.webkit]:
+        browser = engine.launch()
+        context = browser.new_context(viewport={'width': 320, 'height': 900}, color_scheme='dark', has_touch=True)
+        context.add_init_script('''Object.defineProperty(window,'PhotonCamera',{configurable:true,set(original) {
+          Object.defineProperty(window,'PhotonCamera',{value:{...original,create() {
+            let active=false, elapsed=0, frames=0;
+            const info=()=>({fps:30,frames,width:640,height:480,exposure:'unsupported',whiteBalance:'unsupported',
+              callback:'synthetic',elapsedSeconds:elapsed,remainingSeconds:Math.max(0,120-elapsed),
+              deviceId:'PRIVATE_DEVICE',label:'PRIVATE_CAMERA'});
+            return {async start(options) {active=true;elapsed=0;frames=0;
+              window.testReceive = {frame(time,rgb) {if(!active)return; elapsed=time;frames++;
+                options.onFrame({time,rgb,health:{white:0,dark:0,clipped:0},stats:info()});},
+                timeout(){elapsed=120;active=false;options.onStop('timeout');}};return info();},
+              stop(){active=false;},setRegion:original.region,get active(){return active;},get info(){return info();}};
+          }}});
+        }});''')
+        page = context.new_page()
+        errors = errors_for(page)
+        page.goto(url + '?lang=en')
+        page.select_option('#role', 'receive')
+        page.evaluate('''() => {window.packet = (bad,offset=0) => {
+          const C=PhotonReliable,tx=C.transmission('A',C.config({rate:8}));
+          for(let n=0;n/30<tx.seconds+1;n++) {
+            const time=n/30,index=Math.floor((time-.37)*8);
+            const frame=tx.frames[index];
+            const erased=bad && index>=32 && index<72;
+            testReceive.frame(time+offset,erased ? [.18,.18,.18] : frame?.rgb || [.18,.18,.18]);
+          }
+        };}''')
+        page.click('#start')
+        drag_region(page,engine.name)
+        page.evaluate('() => packet(true)')
+        assert page.locator('#status').inner_text() == 'Waiting for a new preamble'
+        first_graph = page.locator('#graph').evaluate('(el) => el.toDataURL()')
+        page.evaluate('() => {for(let n=0;n<90;n++)testReceive.frame(25+n/30,[.2+n/1000,.2,.2]);}')
+        second_graph = page.locator('#graph').evaluate('(el) => el.toDataURL()')
+        assert first_graph != second_graph, 'Graph froze after packet rejection'
+        assert 'Measuring' in page.locator('#graph-state').inner_text()
+        page.evaluate('() => packet(false,30)')
+        assert page.locator('#result-text').inner_text() == 'A'
+        assert page.locator('#crc').inner_text() == 'Pass'
+        assert 'Measurement stopped' in page.locator('#graph-state').inner_text()
+        assert page.locator('#receive-again').is_visible()
+        page.locator('details:has(#diagnostic-save)').evaluate('(el) => {el.open=true;}')
+        with page.expect_download() as download_info:
+            page.click('#diagnostic-save')
+        path = OUT / f'diagnostic-{engine.name}.json'
+        download_info.value.save_as(str(path))
+        diagnostic = json.loads(path.read_text(encoding='utf-8'))
+        assert diagnostic['stopReason'] == 'complete'
+        assert any(e['type'] == 'rejected' for e in diagnostic['events'])
+        assert any(e['type'] == 'result' and e['valid'] for e in diagnostic['events'])
+        assert not diagnostic['truncated']
+        assert 'PRIVATE_' not in path.read_text(encoding='utf-8')
+        replay = '''const fs=require('node:fs'),C=require('./reliable-codec.js');
+          const log=JSON.parse(fs.readFileSync(process.argv[1],'utf8')),d=C.createDecoder(C.config({mode:log.mode}));
+          const events=log.samples.flatMap(s=>d.push(s[0],s.slice(1)));
+          const result=events.find(e=>e.type==='result');
+          if(!result?.valid || result.text!=='A')process.exit(1);'''
+        subprocess.run(['node', '-e', replay, str(path)], cwd=ROOT, check=True)
+        layout(page)
+        # Playwright WebKit's screenshot preparation injects a body{} style, rejected by this CSP.
+        # Keep all WebKit interaction/layout/console checks; capture with Chromium and Firefox.
+        if engine.name != 'webkit':
+            page.locator('#graph-state').scroll_into_view_if_needed()
+            page.screenshot(path=str(OUT / f'diagnostic-{engine.name}-320.png'), caret='initial')
+        old_graph = page.locator('#graph').evaluate('(el) => el.toDataURL()')
+        page.click('#receive-again')
+        assert page.locator('#graph').evaluate('(el) => el.toDataURL()') != old_graph
+        assert page.locator('#diagnostic-save').is_disabled()
+        page.evaluate('() => {for(let n=0;n<45;n++)testReceive.frame(n/30,[.3,.3,.3]);testReceive.timeout();}')
+        assert '120-second time limit' in page.locator('#graph-state').inner_text()
+        assert page.locator('#receive-again').is_visible()
+        page.click('#receive-again')
+        page.evaluate('() => {testReceive.frame(0,[.4,.4,.4]);testReceive.frame(.2,[.2,.2,.2]);}')
+        assert 'Measuring' in page.locator('#graph-state').inner_text()
+        page.click('#stop')
+        page.set_viewport_size({'width':1280,'height':900})
+        page.click('#language')
+        assert '測定停止' in page.locator('#graph-state').inner_text()
+        layout(page)
+        if engine.name != 'webkit':
+            page.locator('#receiver').screenshot(path=str(OUT / f'diagnostic-{engine.name}-1280-ja.png'), caret='initial')
+        assert not errors, errors
+        report.append({'diagnostics':engine.name,'badPacketThenResend':'A CRC pass; graph updated',
+            'savedSamples':len(diagnostic['samples']),'replay':'A CRC pass','timeoutRestart':True,
+            'roi':'4 corners, move, new, clamp, click; Chromium also touch drag'})
+        browser.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--screenshots', action='store_true')
@@ -598,6 +734,7 @@ def main():
             print('UI PASS', len(report), flush=True)
             camera_adapter(p, url, report)
             camera_ui(p, url, report)
+            reception_diagnostics(p, url, report)
             screen_transmission(p, url, report)
             transmission(p, url, report, args.screenshots)
             fallback_and_safety(p, url, report)
