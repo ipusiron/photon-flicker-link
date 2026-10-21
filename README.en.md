@@ -126,13 +126,19 @@ Correction counts and CRC are shown separately. Live text is provisional and can
 
 ### When reception is unstable
 
+Make the rectangle slightly smaller than the flickering area and keep it entirely inside that area. If the signal occupies only part of the rectangle, background colors dilute the measured average. Drag a corner to resize, inside to move, or from outside to draw a new rectangle. The outline follows the gesture; releasing applies the sampling region and restarts synchronization. Sliders provide the same adjustment.
+
 Monochrome measures a brightness difference, so dimming the sender too far reduces that difference. At the other extreme, a white, clipped signal area loses brightness and color information. Alongside the rectangle controls, the tool shows the proportions of near-white pixels, near-black pixels and pixels with any channel near maximum, plus signal range over the last two seconds. Adjust gradually while watching the receiver. These measurements guide adjustment; they do not confirm communication.
 
 If brightness decisions are unstable, select Two colors (blue / red) on both devices. The R/(R+B) ratio cancels a gain applied equally to red and blue. The preamble estimates the two ratio levels and timing. This is a different decoder from monochrome with colored output. Clipping, dark-image noise, changing background light and automatic color adjustments can still cause failure. CRC requirements remain unchanged. Two-color mode has the same rate as monochrome.
 
 On iPhone, the brightness control changes the entire screen. True Tone, Night Shift and auto-brightness can also alter the display. For comparison experiments, record these settings and consider temporarily disabling them to hold conditions steady. See [Apple's instructions](https://support.apple.com/en-us/109351). The tool does not lock device screen brightness. Manual camera exposure and WB are requested only when the browser reports support.
 
-The reported iPhone reception failure remains unexplained because no device-to-device frames or measurements have been collected. iPhone hardware, Vivaldi, multiple physical cameras, distance, ambient light and actual exposure/WB locking remain awaiting owner testing (本人確認待ち).
+The owner reports that V2 reaches Decoding but does not succeed in either monochrome or blue/red. No physical reception samples have been collected, so the cause remains unidentified. iPhone hardware, Vivaldi, multiple physical cameras, distance, ambient light and actual exposure/WB locking remain awaiting owner testing (本人確認待ち).
+
+Above the graph, remaining reception time, sampled frame count and the stop reason are shown. Measurement stops on success or at 120 seconds, keeping the last graph. Sending again does not restart the receiver. Press Restart reception before sending again.
+
+To investigate a failure, open Diagnose reception failure below the graph and choose Save reception diagnostic. It saves sample times, mean RGB and decoder events locally as JSON, excluding images, audio, camera names, device IDs and video filenames. Transmitted text may be recoverable from samples, so use test text such as `A` before sharing. Save before retrying: starting a new transmission or reception, clearing the display or reloading discards the diagnostic.
 
 ## 🔬 Transfer limits and data density
 
@@ -205,6 +211,8 @@ Lessons also introduce [LED-it-GO](https://arxiv.org/abs/1702.06715), [xLED](htt
 ## 🔒 Data handling and safeguards
 
 Video frames are processed in a canvas without recording. The selected video's blob URL is released on stop or completion. Text and graph samples remain only in page memory until Clear display or page closure. Only language and theme are stored in localStorage.
+
+Choosing Save reception diagnostic downloads a JSON file containing measurements and decoder events. Nothing is uploaded automatically. A downloaded file remains on the device after the page is cleared.
 
 Analysis makes no external requests. CSP retains `connect-src 'none'`, with `media-src 'self' blob:` for local videos. There are no inline scripts, style attributes or external libraries. Loading the public page and deliberately opening external links are separate network activities.
 

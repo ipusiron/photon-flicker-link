@@ -124,6 +124,7 @@
       <p id="preview-note" class="muted"></p>
       <div class="receive-workspace">
         <div class="receive-monitor">
+      <p><strong data-i18n="regionCoverage"></strong></p>
       <canvas id="preview" width="640" height="480" role="img" data-label="previewLabel"></canvas>
       <label class="choice"><input id="preview-enabled" type="checkbox" checked><span data-i18n="previewEnabled"></span></label>
       <p id="receive-status" role="status"></p>
@@ -131,10 +132,17 @@
       <h3 data-i18n="liveTitle"></h3>
       <output id="live" class="live-text" aria-live="polite"></output>
       <h3 data-i18n="graphTitle"></h3>
+      <p id="graph-state" class="mono" aria-live="off"></p>
+      <button id="receive-again" type="button" data-i18n="receiveAgain" hidden></button>
       <canvas id="graph" width="960" height="300" role="img" data-label="graphLabel"></canvas>
       <p id="graph-legend" class="mono"></p>
       <p id="sample-value" class="mono"></p>
       <p class="muted" data-i18n="graphNote"></p>
+      <details>
+        <summary data-i18n="diagnosticTitle"></summary>
+        <p class="muted" data-i18n="diagnosticNote"></p>
+        <button id="diagnostic-save" type="button" data-i18n="diagnosticSave" disabled></button>
+      </details>
         </div>
         <div id="region-panel">
           <h3 data-i18n="regionTitle"></h3>

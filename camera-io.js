@@ -58,8 +58,12 @@
   function create(video, canvas, host = globalThis) {
     let generation = 0, stream = null, url = null, frameId = null, timer = null, watchdog = null;
     let rvfc = false, active = false, handlers = [], rejectReady = null;
-    let onStop = () => {}, lastFrameAt = 0, crop = region(), stats = {};
+    let onStop = () => {}, lastFrameAt = 0, openedAt = 0, crop = region(), stats = {};
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    function snapshot() {
+      const elapsedSeconds = active ? Math.max(0, (host.performance.now() - openedAt) / 1000) : (stats.elapsedSeconds || 0);
+      return { ...stats, elapsedSeconds, remainingSeconds: Math.max(0, MAX_VIDEO_SECONDS - elapsedSeconds) };
+    }
     function listen(target, name, handler) {
       target.addEventListener(name, handler);
       handlers.push(() => target.removeEventListener(name, handler));
@@ -67,6 +71,7 @@
     function stop(reason = 'stopped') {
       generation++;
       const wasActive = active;
+      if (wasActive) stats = snapshot();
       active = false;
       if (rejectReady) { rejectReady(new Error('cancelled')); rejectReady = null; }
       handlers.splice(0).forEach(remove => remove());
@@ -102,9 +107,10 @@
     async function start(options) {
       stop();
       const ticket = generation;
+      openedAt = host.performance.now();
       active = true;
       onStop = options.onStop || (() => {});
-      stats = { fps: 0, width: 0, height: 0, exposure: 'unsupported', whiteBalance: 'unsupported', deviceId: '', label: '' };
+      stats = { fps: 0, frames: 0, width: 0, height: 0, exposure: 'unsupported', whiteBalance: 'unsupported', deviceId: '', label: '' };
       rvfc = !!host.HTMLVideoElement && 'requestVideoFrameCallback' in host.HTMLVideoElement.prototype;
       stats.callback = rvfc ? 'rVFC' : 'rAF';
       lastFrameAt = host.performance.now();
@@ -165,6 +171,7 @@
             lastFrameAt = host.performance.now();
             if (first === null) first = time;
             count++;
+            stats.frames = count;
             stats.fps = time > first ? (count - 1) / (time - first) : 0;
             try {
               const rect = region(crop);
@@ -173,7 +180,7 @@
               const h = Math.max(1, Math.min(canvas.height - y, Math.floor(rect.h * canvas.height)));
               const pixels = ctx.getImageData(x, y, w, h).data;
               const rgb = core.averageRGBA(pixels);
-              options.onFrame({ time, rgb, health: core.pixelHealth(pixels), stats: { ...stats }, rect });
+              options.onFrame({ time, rgb, health: core.pixelHealth(pixels), stats: snapshot(), rect });
             } catch (_) { stop('sampleError'); return; }
           }
           if (ticket === generation && active) schedule();
@@ -185,14 +192,14 @@
         watchdog = host.setInterval(() => {
           if (host.performance.now() - lastFrameAt > 5000) stop('frameStalled');
         }, 1000);
-        return { ...stats };
+        return snapshot();
       } catch (error) {
         if (ticket === generation) stop('failed');
         throw error;
       }
     }
     return { start, stop, setRegion(value) { crop = region(value); return crop; },
-      get active() { return active; }, get info() { return { ...stats }; } };
+      get active() { return active; }, get info() { return snapshot(); } };
   }
   return Object.freeze({ create, region, lockControls, listCameras, errorCode, MAX_FILE_BYTES, MAX_VIDEO_SECONDS });
 }));
