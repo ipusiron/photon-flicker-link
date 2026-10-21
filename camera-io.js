@@ -5,7 +5,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (core) {
   'use strict';
   const MAX_FILE_BYTES = 128 * 1024 * 1024;
-  const MAX_VIDEO_SECONDS = 60;
+  const MAX_VIDEO_SECONDS = 120;
 
   async function listCameras(host = globalThis) {
     if (!host.navigator.mediaDevices?.enumerateDevices) throw new Error('deviceListUnavailable');
@@ -108,7 +108,7 @@
       rvfc = !!host.HTMLVideoElement && 'requestVideoFrameCallback' in host.HTMLVideoElement.prototype;
       stats.callback = rvfc ? 'rVFC' : 'rAF';
       lastFrameAt = host.performance.now();
-      timer = host.setTimeout(() => stop('timeout'), core.RECEIVE_SECONDS * 1000);
+      timer = host.setTimeout(() => stop('timeout'), MAX_VIDEO_SECONDS * 1000);
       video.muted = true;
       video.playsInline = true;
       try {

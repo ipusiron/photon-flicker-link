@@ -1,7 +1,7 @@
 /* Photon Flicker Link - MIT (c) 2026 ipusiron. One finite transmission, never an automatic repeat. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./codec-core.js'));
-  else root.PhotonScreen = factory(root.PhotonCodec);
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./reliable-codec.js'));
+  else root.PhotonScreen = factory(root.PhotonReliable);
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (core) {
   'use strict';
   function create(canvas, host = globalThis) {
@@ -53,7 +53,7 @@
           const frame = tx.frames[index];
           ctx.fillStyle = `rgb(${frame.srgb.join(',')})`;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          onFrame({ ...frame, total: tx.frames.length });
+          onFrame({ ...frame, total: tx.frames.length, remaining: (tx.frames.length - index) * settings.period });
         }
         id = host.requestAnimationFrame(draw);
       }

@@ -10,6 +10,7 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css">
   <script src="codec-core.js" defer></script>
+  <script src="reliable-codec.js" defer></script>
   <script src="camera-io.js" defer></script>
   <script src="screen-tx.js" defer></script>
   <script src="messages.js" defer></script>
@@ -99,6 +100,7 @@
       <p id="tx-countdown" class="countdown" role="status" aria-live="polite"></p>
       <canvas id="tx" width="640" height="300" role="img" data-label="txLabel"></canvas>
       <p id="tx-progress" class="mono" aria-live="off"></p>
+      <p id="tx-remaining" class="mono" aria-live="off"></p>
       <p class="muted" data-i18n="txNote"></p>
     </section>
     <section id="receiver" class="card" aria-labelledby="rx-title" hidden>
@@ -125,6 +127,7 @@
       <canvas id="preview" width="640" height="480" role="img" data-label="previewLabel"></canvas>
       <label class="choice"><input id="preview-enabled" type="checkbox" checked><span data-i18n="previewEnabled"></span></label>
       <p id="receive-status" role="status"></p>
+      <p id="receive-progress" class="mono" aria-live="off"></p>
       <h3 data-i18n="liveTitle"></h3>
       <output id="live" class="live-text" aria-live="polite"></output>
       <h3 data-i18n="graphTitle"></h3>
@@ -160,14 +163,15 @@
         <div id="agreement-field" hidden><dt data-i18n="agreement"></dt><dd id="agreement">—</dd></div>
       </dl>
       <p class="muted" data-i18n="resultNote"></p>
+      <p id="corrections" class="mono"></p>
       <details><summary data-i18n="diagnostics"></summary><pre id="diagnostics"></pre></details>
       <h3 data-i18n="tradeoff"></h3>
       <div class="table-wrap"><table>
         <thead><tr><th data-i18n="mode"></th><th data-i18n="density"></th><th data-i18n="conditions"></th></tr></thead>
         <tbody>
-          <tr><th data-i18n="mono"></th><td>1 bit/symbol</td><td data-i18n="monoTradeoff"></td></tr>
-          <tr><th data-i18n="bicolor"></th><td>1 bit/symbol</td><td data-i18n="bicolorTradeoff"></td></tr>
-          <tr><th data-i18n="color"></th><td>3 bit/symbol</td><td data-i18n="colorTradeoff"></td></tr>
+          <tr><th data-i18n="mono"></th><td>1 bit/pair</td><td data-i18n="monoTradeoff"></td></tr>
+          <tr><th data-i18n="bicolor"></th><td>1 bit/pair</td><td data-i18n="bicolorTradeoff"></td></tr>
+          <tr><th data-i18n="color"></th><td>3 bit/pair</td><td data-i18n="colorTradeoff"></td></tr>
         </tbody>
       </table></div>
     </section>

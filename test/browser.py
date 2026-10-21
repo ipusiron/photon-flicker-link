@@ -22,7 +22,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 def movie(mode, text='LIGHT', levels=2):
     cfg = json.dumps({'mode': mode, 'levels': levels, 'rate': 8})
-    code = 'const C=require("./codec-core.js"); console.log(JSON.stringify(C.transmission('
+    code = 'const C=require("./reliable-codec.js"); console.log(JSON.stringify(C.transmission('
     code += json.dumps(text) + ',C.config(' + cfg + '))));'
     tx = json.loads(subprocess.check_output(['node', '-e', code], cwd=ROOT, text=True, encoding='utf-8'))
     file = OUT / f'{mode}-{levels}.webm'
@@ -69,8 +69,8 @@ def trace_receiver(context):
           return camera;
         }}});
       }});
-      Object.defineProperty(window,'PhotonCodec',{configurable:true,set(original) {
-        Object.defineProperty(window,'PhotonCodec',{value:{...original,createDecoder(...args) {
+      Object.defineProperty(window,'PhotonReliable',{configurable:true,set(original) {
+        Object.defineProperty(window,'PhotonReliable',{value:{...original,createDecoder(...args) {
           const decoder=original.createDecoder(...args), push=decoder.push;
           decoder.push=(...args)=>{const events=push(...args);
             receiveTrace.events.push(...structuredClone(events));return events;};
@@ -376,8 +376,8 @@ def screen_transmission(p, url, report):
                 page.goto(url + '?lang=en')
                 page.select_option('#mode', mode)
                 assert page.locator('#rate').input_value() == '2'
-                expected = page.evaluate('''() => PhotonCodec.transmission('LIGHT',
-                  PhotonCodec.config({mode:document.querySelector('#mode').value}))''')
+                expected = page.evaluate('''() => PhotonReliable.transmission('LIGHT',
+                  PhotonReliable.config({mode:document.querySelector('#mode').value}))''')
                 # Read the canvas after each UI progress update, including the synchronous first symbol.
                 page.evaluate('''() => {
                   window.sentFrames = []; window.counts = []; window.countTimes = [];

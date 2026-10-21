@@ -22,9 +22,8 @@
     bicolor: ['2色（青・赤）', 'Two colors (blue / red)'],
     rate: ['送信速度', 'Transmit rate'], contrast: ['送信コントラスト', 'Transmit contrast'],
     low: ['低い（初期値）', 'Low (default)'], high: ['高い（注意）', 'High (caution)'],
-    settingsNote: ['送受信のモードをそろえます。受信側は速度をプリアンブルから推定します。カラーの較正も含め、送信は1回で終了します。',
-      'Use the same modulation on both devices. The receiver estimates timing from the preamble. Transmission ends ' +
-          'after one packet, including color calibration.'],
+    settingsNote: ['送受信の両方を再読み込みし、同じモードにします。v2は反転した値と組にして送り、組ごとに同期を更新します。送信は1回です。',
+      'Reload both devices and select the same mode. Version 2 sends complementary pairs and updates timing per pair. Transmission ends after one packet.'],
     environment: ['この環境', 'This environment'], fps: ['実効フレームレート', 'Effective frame rate'],
     callback: ['フレーム取得方式', 'Frame callback'], exposure: ['露出固定', 'Exposure lock'],
     whiteBalance: ['ホワイトバランス固定', 'White balance lock'], resolution: ['入力解像度', 'Input resolution'],
@@ -36,9 +35,9 @@
     sendNote: ['別の端末の受信を開始してから押します。③→②→①→開始の3秒後に送信し、停止すると発光面は静止します。',
       'Start reception on the other device first. A three-second ③ → ② → ① → Start countdown precedes transmission. Stop returns the area to gray.'],
     receiveNote: ['「受けるだけ」を選ぶだけでは映像も信号も表示しません。「受信開始」を押し、カメラを許可すると表示・解析を始めます。' +
-      '下のカメラテストは映像だけの確認です。受信は1パケットまたは最大60秒で停止します。',
+      '下のカメラテストは映像だけの確認です。受信成功または最大120秒で停止します。失敗後は同期信号を待ちます。',
       'Selecting Receive only does not start video or signal display. Choose Start reception and allow the camera to display and analyze frames. ' +
-      'Test camera below previews video only. Reception stops after one packet or at 60 seconds.'],
+      'Test camera previews video only. Reception stops on success or at 120 seconds; failed packets return to preamble search.'],
     receiveStart: ['受信開始', 'Start reception'], cameraSelect: ['使うカメラ', 'Camera to use'],
     cameraRefresh: ['一覧を更新', 'Refresh list'], cameraTest: ['カメラをテスト', 'Test camera'],
     cameraTestStop: ['テストを停止', 'Stop test'], cameraDefault: ['自動選択', 'Automatic selection'],
@@ -53,9 +52,9 @@
       'The camera list is empty. Check connections and browser permissions, then try Test camera.'],
     deviceListUnavailable: ['一覧を取得できません。自動選択でカメラテストを試せます。',
       'The camera list is unavailable. You can still test automatic selection.'],
-    cameraNote: ['テストは映像・解像度・fpsを確認する操作です。復号はせず、最大60秒で停止します。' +
+    cameraNote: ['テストは映像・解像度・fpsを確認する操作です。復号はせず、最大120秒で停止します。' +
       '映像を見るには下の表示設定をオンにします。受信開始で選んだカメラを使います。使用中の切り替えは前のカメラを停止し、受信では同期もやり直します。',
-      'Test checks video, resolution and fps without decoding, for up to 60 seconds. Enable the preview below to see video. ' +
+      'Test checks video, resolution and fps without decoding, for up to 120 seconds. Enable the preview below to see video. ' +
       'Start reception uses the selected camera. Switching stops the previous camera and restarts synchronization during reception.'],
     cameraUnchecked: ['カメラはまだテストしていません。', 'Camera not tested yet.'],
     cameraOpening: ['カメラを開いています。許可の確認が表示されたら操作してください。',
@@ -77,9 +76,16 @@
     textInput: ['送る文字列（UTF-8で最大8バイト）', 'Text to send (up to 8 UTF-8 bytes)'],
     byteCount: ['{count} / 8バイト', '{count} / 8 bytes'],
     seconds: ['送信時間 {seconds}秒 ＋ 開始前3秒', 'Transmission time: {seconds} s + 3 s countdown'],
+    remaining: ['送信終了まで約{seconds}秒', 'About {seconds} s remaining'],
+    receiveProgress: ['データ {count} / {total}組 · 同期の再探索 {retries}回', 'Data: {count} / {total} pairs · Search restarts: {retries}'],
+    retryProgress: ['同期を再探索中（{retries}回）：{reason}', 'Searching again ({retries}): {reason}'],
+    resynchronizing: ['同期信号を待ち直しています', 'Waiting for a new preamble'],
+    packetRejected: ['訂正後もCRC・終了・UTF-8の確認を通過しませんでした。', 'The corrected packet failed CRC, end-marker or UTF-8 validation.'],
+    corrections: ['訂正：本文・CRC・冗長部 {bytes}バイト／長さ情報 {bits}ビット',
+      'Corrections: {bytes} payload/CRC/parity bytes; {bits} length-header bits'],
     videoInput: ['読み込む動画', 'Local video file'],
-    fileNote: ['最大128MiB・60秒。ブラウザーが再生できるMP4やWebMを選びます。停止・終了時にファイルへの参照を解放します。',
-      'Up to 128 MiB and 60 seconds. Choose a browser-playable MP4 or WebM. The file reference is released on stop or completion.'],
+    fileNote: ['最大128MiB・120秒。v2の送信動画を使います。ブラウザーが再生できるMP4やWebMを選びます。停止時にファイルへの参照を解放します。',
+      'Up to 128 MiB and 120 seconds. Use a version-2 transmission in a browser-playable MP4 or WebM. File references are released on stop.'],
     expected: ['送った文字列がわかる場合だけ入力（任意）', 'Known transmitted text (optional)'],
     start: ['開始', 'Start'], stop: ['停止', 'Stop'], clear: ['表示を消去', 'Clear display'],
     transmitter: ['光を送る', 'Transmit light'], txLabel: ['送信する明滅の表示面', 'Optical signal display'],
@@ -93,12 +99,13 @@
       'Drag inside the signal area or use the four sliders. Changing the rectangle restarts synchronization.'],
     roiX: ['左端（%）', 'Left (%)'], roiY: ['上端（%）', 'Top (%)'], roiW: ['幅（%）', 'Width (%)'], roiH: ['高さ（%）', 'Height (%)'],
     regionReset: ['中央に戻す', 'Reset to center'], graphTitle: ['測定値の時系列', 'Signal over time'],
-    graphLabel: ['輝度・赤青比率・RGBの時系列、判定しきい値、シンボル位置', 'Luminance, red/blue ratio or RGB over time and symbol positions'],
-    graphNote: ['縦軸は輝度・赤青比率・較正後RGB（0〜1）、横軸は秒です。破線はしきい値、縦線は判定位置、?は低確信度です。',
-      'Vertical: luminance, red/blue ratio or calibrated RGB (0–1). Horizontal: seconds. Dashed: threshold; vertical: decision; ?: low confidence.'],
-    monoLegend: ['Y 実線 / しきい値 破線 / 判定位置 縦線', 'Y solid / threshold dashed / decision vertical'],
+    graphLabel: ['輝度・赤青比率・RGBの時系列、組ごとの判定位置', 'Luminance, red/blue ratio or RGB over time and pair decisions'],
+    graphNote: ['縦軸は輝度・赤青比率・較正後RGB（0〜1）、横軸は秒です。縦線は組の中央、?は低確信度です。各組の前半と後半の差から判定します。',
+      'Vertical: luminance, red/blue ratio or calibrated RGB (0–1). Horizontal: seconds. ' +
+      'Marks show pair centers; ? means low confidence. Compare both halves.'],
+    monoLegend: ['Y 実線 / 組の中央 縦線', 'Y solid / pair center vertical'],
     colorLegend: ['R 実線 / G 長い破線 / B 点線（較正後の0〜1）', 'R solid / G long dash / B dotted (calibrated 0–1)'],
-    bicolorLegend: ['R/(R+B) 実線 / しきい値 破線 / 判定位置 縦線', 'R/(R+B) solid / threshold dashed / decision vertical'],
+    bicolorLegend: ['R/(R+B) 実線 / 組の中央 縦線', 'R/(R+B) solid / pair center vertical'],
     signalTitle: ['明暗の確認', 'Brightness check'],
     signalHealth: ['測定枠：白に近い {white}% · 黒に近い {dark}% · いずれかの色が上限付近 {clipped}% · 直近2秒の変動幅 {span}',
       'Region: near white {white}% · near black {dark}% · any channel near maximum {clipped}% · signal range over 2 s: {span}'],
@@ -123,12 +130,13 @@
     resultNote: ['CRCは伝送中の誤りを調べます。暗号化や送信者の証明ではありません。確信度は分類の目安で、正解の確率ではありません。',
       'CRC checks transmission errors. It provides neither encryption nor sender authentication. Confidence ' +
           'describes classification margin, not probability of correctness.'],
-    diagnostics: ['シンボルごとの判定', 'Per-symbol decisions'], tradeoff: ['3モードの違い', 'Three modulation modes'],
-    density: ['1シンボルの情報量', 'Data per symbol'], conditions: ['特徴と条件', 'Characteristics and conditions'],
-    monoTradeoff: ['遅い・分離しやすい。2〜8bit/s（生レート）', 'Slower, easier separation. 2–8 bit/s raw'],
-    colorTradeoff: ['速い・環境依存。6〜24bit/s（生レート）＋較正', 'Faster, environment dependent. 6–24 bit/s raw, plus calibration'],
-    bicolorTradeoff: ['青＝0・赤＝1。赤青比率で共通の明るさ変化を抑える。2〜8bit/s。白飛びや色補正の影響は残る',
-      'Blue = 0, red = 1. Red/blue ratio reduces common brightness changes. 2–8 bit/s. Clipping and color adjustments still matter'],
+    diagnostics: ['組ごとの判定', 'Per-pair decisions'], tradeoff: ['3モードの違い', 'Three modulation modes'],
+    density: ['1組（2シンボル）の情報量', 'Data per pair (2 symbols)'], conditions: ['特徴と条件', 'Characteristics and conditions'],
+    monoTradeoff: ['明→暗が1、暗→明が0。1〜4bit/s（冗長部を含む）', 'Bright–dark = 1; dark–bright = 0. 1–4 bit/s including redundancy'],
+    colorTradeoff: ['RGB各チャネルで反転した値を比較。3〜12bit/s（冗長部を含む）＋較正',
+      'Compare complementary pairs on each RGB channel. 3–12 bit/s including redundancy, plus calibration'],
+    bicolorTradeoff: ['青→赤が0、赤→青が1。赤青比率で比較。1〜4bit/s（冗長部を含む）。白飛びや色補正の影響は残る',
+      'Blue–red = 0; red–blue = 1. Compare red/blue ratios. 1–4 bit/s including redundancy. Clipping and color adjustments still matter'],
     lessons: ['座学', 'How it works'], helpTitle: ['使い方と読み方', 'Using the tool'],
     helpBody: ['2台で同じモードを選びます。受信側はカメラテストで映像を確認し、使うカメラを選んでから受信を開始します。' +
       '送信画面を測定枠の内側に収め、短い文字列を1回送ります。1台では動画のオフライン復号を使えます。',
@@ -146,7 +154,7 @@
     sending: ['送信中', 'Sending'], receiving: ['同期信号を待っています', 'Waiting for the preamble'],
     decoding: ['復号中', 'Decoding'], sent: ['送信終了', 'Transmission finished'], complete: ['受信終了', 'Reception finished'],
     stopped: ['停止しました', 'Stopped'], hidden: ['タブが非表示になったため停止しました', 'Stopped because the tab became hidden'],
-    timeout: ['60秒で自動停止しました', 'Stopped at the 60-second time limit'], failed: ['開始できませんでした', 'Could not start'],
+    timeout: ['120秒で自動停止しました', 'Stopped at the 120-second time limit'], failed: ['開始できませんでした', 'Could not start'],
     ok: ['成功', 'Pass'], fail: ['不一致', 'Fail'], unsupported: ['非対応 / 情報なし', 'Unsupported / unavailable'],
     requested: ['要求済み・固定を確認できず', 'Requested; lock not confirmed'], manual: ['手動モードを確認', 'Manual mode reported'],
     controlFailed: ['固定できず・解析を継続', 'Lock failed; analysis continues'], notApplicable: ['動画では対象外', 'Not applicable to a file'],
@@ -159,7 +167,8 @@
       'Camera permission was denied. Check browser permissions.'],
     cameraEnded: ['カメラが切断されました。', 'The camera disconnected.'], cameraMuted: ['カメラ入力が中断されました。', 'Camera input was interrupted.'],
     fileSize: ['0バイトより大きく128MiB以下の動画を選んでください。', 'Choose a video larger than zero bytes and at most 128 MiB.'],
-    selectFile: ['動画を選んでください。', 'Choose a video file.'], videoDuration: ['60秒以下の動画を選んでください。', 'Choose a video no longer than 60 seconds.'],
+    selectFile: ['動画を選んでください。', 'Choose a video file.'],
+    videoDuration: ['120秒以下の動画を選んでください。', 'Choose a video no longer than 120 seconds.'],
     videoError: ['動画を再生できません。別の形式の動画を選んでください。', 'Cannot play this video. Try another supported format.'],
     sampleError: ['映像の読み取りを続けられませんでした。', 'Video sampling could not continue.'],
     frameStalled: ['5秒間、新しいフレームを取得できなかったため停止しました。', 'Stopped after five seconds without a new frame.'],
@@ -174,9 +183,10 @@
     incompleteFrame: ['フレームが途中で終わりました。', 'The packet ended before all symbols arrived.'],
     noPreamble: ['同期信号が見つかりませんでした。位置とモードを確認してください。', 'No preamble found. Check positioning and modulation.'],
     calibration: ['色較正', 'Color calibration'], preamble: ['同期信号', 'Preamble'], data: ['データ', 'Data'], end: ['終了マーカー', 'End marker'],
+    complement: ['反転したデータ', 'Complementary data'],
     emptyPreview: ['開始すると映像を表示します', 'Press Start to display video'],
     previewHidden: ['映像表示はオフ・フレーム取得は継続', 'Preview off; frame capture continues'],
-    symbolRow: ['番号 / 秒 / 値 / 確信度', 'Index / seconds / value / confidence']
+    symbolRow: ['組番号 / 秒 / 値 / 確信度', 'Pair index / seconds / value / confidence']
   };
   const ja = {}, en = {};
   Object.entries(pairs).forEach(([key, value]) => { ja[key] = value[0]; en[key] = value[1]; });
@@ -184,14 +194,15 @@
     {
       title: ['画面からカメラへ', 'From screen to camera'],
       text: ['文字をUTF-8にし、モノクロでは明度の2段階、2色では青と赤、カラーではRGB各2段階へ変換します。' +
-        'プリアンブルで時刻と振幅を合わせ、CRC-8で誤りを調べます。2色は赤青比率で明るさ変化の影響を抑えます。',
+        'v2は反転した値と組にして送り、各組から同期を更新します。長さはHamming符号、本文とCRCはRS符号で保護します。CRCで訂正後を確認します。',
         'UTF-8 bytes become two brightness levels, blue/red symbols, or two levels on each parallel RGB channel. ' +
-        'The preamble sets timing and amplitude. CRC-8 checks errors. Blue/red uses a channel ratio to reduce common brightness changes.'],
+        'Version 2 updates timing from complementary pairs. Hamming coding protects length; RS protects payload and CRC. CRC checks the corrected result.'],
       headers: ['順序 / 内容', 'Order / Content'],
       rows: [
         ['0 / カラーのみ', 'R/G/B較正（各2シンボル＋基準2）', '0 / Color only', 'R/G/B calibration (two symbols each, plus two baseline symbols)'],
         ['1', 'プリアンブル16シンボル', '1', '16-symbol preamble'],
-        ['2', '長さ1バイト＋本文0〜8バイト＋CRC-8（0x07）1バイト', '2', 'Length: 1 byte; payload: 0–8 bytes; CRC-8 (0x07): 1 byte'],
+        ['2', '長さ8ビット符号＋本文0〜8バイト＋CRC-8（0x07）＋RS冗長2バイト。反転した値と組にして送信',
+          '2', '8 coded length bits; 0–8 payload bytes; CRC-8 (0x07); 2 RS parity bytes. Sent in complementary pairs'],
         ['3', '終了マーカー6シンボル', '3', '6-symbol end marker']
       ],
       sources: [['VLC synchronization', 'https://patents.google.com/patent/US8374201B2/en']]
@@ -235,9 +246,9 @@
           'guaranteed equal area of the image.'],
       headers: ['載せ方 / 密度の例', 'Encoding / Example density'],
       rows: [
-        ['明滅', '1 bit/symbol → 2 symbol/sで2 bit/s', 'Flicker', '1 bit/symbol → 2 bit/s at 2 symbol/s'],
-        ['青・赤の2色', '1 bit/symbol。明暗の代わりに赤青比率を測定', 'Blue / red', '1 bit/symbol; measure the red/blue ratio instead of brightness'],
-        ['RGB並列', '3 bit/symbol → 2 symbol/sで6 bit/s（較正を除く）', 'Parallel RGB', '3 bits/symbol → 6 bit/s at 2 symbol/s (excluding calibration)'],
+        ['明滅', 'v2は1 bit/組 → 2 symbol/sで1 bit/s（冗長部を含む）', 'Flicker', 'V2: 1 bit/pair → 1 bit/s at 2 symbol/s, including redundancy'],
+        ['青・赤の2色', 'v2は青→赤が0、赤→青が1。各組の中央で色が変化', 'Blue / red', 'V2: blue–red = 0, red–blue = 1; color changes at every pair midpoint'],
+        ['RGB並列', 'v2は3 bit/組 → 2 symbol/sで3 bit/s（冗長部を含む）', 'Parallel RGB', 'V2: 3 bits/pair → 3 bit/s at 2 symbol/s, including redundancy'],
         ['QR Version 1-L', '1枚で最大17バイト＝136ビット（バイトモード）', 'QR Version 1-L', 'Up to 17 bytes = 136 bits per image in byte mode']
       ],
       sources: [['QR capacity', 'https://www.qrcode.com/en/about/version.html'],
