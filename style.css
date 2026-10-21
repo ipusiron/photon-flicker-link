@@ -241,6 +241,7 @@ canvas {
   height: auto;
   aspect-ratio: 2 / 1;
   margin-inline: auto;
+  cursor: none;
 }
 .card canvas[id="preview"] {
   max-width: 640px;

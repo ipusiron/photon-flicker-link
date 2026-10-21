@@ -290,8 +290,9 @@ rAFの時刻は撮像時刻そのものではなく、rVFCと同じ精度を保�
 これは信号差を読む前の検出失敗であり、高コントラストで解消したとはしません。
 
 v2で報告されたiPhoneからPC/Vivaldiへの受信失敗の実機原因は未特定です。
-v3でもiPhoneとPCの両方向で文字が出ず、自動検出できないとの報告があります。
-四隅マーカー版での解決、2台間通信、距離、環境光、端末差、露出とWBの実効は本人確認待ちです。
+v3初版では両方向の不成功が報告されましたが、四隅マーカー版ではPCからiPhoneへ2 symbol/s・低設定で先頭LIGHのブロックCRCが成功したとの本人報告があります。
+受信を続けたまま何度か再送し、240秒の期限で62/64位置・1/2ブロックとなりました。正確な開始時刻と診断JSONは未採取で、全文成功と停止までの原因は未確認です。
+実機での全文受信、距離、環境光、端末差、露出とWBの実効は本人確認待ちです。
 合成入力の成功は物理的な通信距離や成功率を示しません。
 実施済みの範囲と採取値は[検証記録](verification.md)を参照してください。
 
@@ -316,6 +317,6 @@ Remaining time uses the observed clock period and appears only during active rec
 Current data and clock contrast are assessed separately; sufficient contrast does not establish successful decoding or CRC.
 At 2 symbol/s, the first checked text takes about 40 seconds for A or 52 seconds for the LIGH prefix of LIGHT, plus the three-second preparation.
 The 240-second live deadline begins with the first sampled frame; opening is limited separately to 30 seconds.
-The owner reported V3 failure in both directions between iPhone and PC browsers.
-The physical cause is unidentified, and resolution by the corner-marker update awaits owner testing.
+The first V3 release failed in both directions between iPhone and PC browsers. With the corner-marker version, the owner reported a checked LIGH block on iPhone, sent from a PC at 2 symbol/s with Low contrast.
+Repeated sending during one reception session ended at the 240-second deadline with 62/64 positions and 1/2 blocks. Exact start times and diagnostic samples are unavailable; full-message success and the cause leading to the deadline remain unconfirmed.
 A synthetic combination of 224-pixel width, 10% perspective difference, 0.25 gain plus 0.12 offset, and three radius-one blur passes still prevents marker detection at both contrast settings.

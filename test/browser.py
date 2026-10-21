@@ -157,6 +157,24 @@ def no_japanese(page):
     assert not re.search(r'[\u3040-\u30ff\u3400-\u9fff（）]', text), text
 
 
+def signal_panel_accessibility(page, hover=False):
+    if hover:
+        page.locator('#tx').hover()
+    state = page.evaluate('''() => {
+      const tx = document.querySelector('#tx'), language = document.documentElement.lang;
+      return {title:tx.getAttribute('title'),label:tx.getAttribute('aria-label'),
+        expected:PhotonMessages[language].txLabel,cursor:getComputedStyle(tx).cursor,
+        controls:['start','stop','help','preview'].map(id=>getComputedStyle(document.getElementById(id)).cursor),
+        tooltips:['theme','language','help'].map(id=>{const el=document.getElementById(id);
+          return el.title.length>0 && el.title===el.getAttribute('aria-label');})};
+    }''')
+    assert state['title'] is None, state
+    assert state['label'] == state['expected'] and state['label'], state
+    assert state['cursor'] == 'none', state
+    assert all(cursor != 'none' for cursor in state['controls']), state
+    assert all(state['tooltips']), state
+
+
 def screenshot(page, name, language, selector):
     dest = ROOT / 'assets' / ('en' if language == 'en' else '')
     dest.mkdir(parents=True, exist_ok=True)
@@ -198,6 +216,7 @@ def interface(p, urls, report):
                                 assert page.locator('#mode').count() == 0
                                 layout(page)
                             page.select_option('#role', 'send')
+                            signal_panel_accessibility(page)
                             page.fill('#text-input', '123456789')
                             page.click('#start')
                             assert page.locator('#error').inner_text()
@@ -431,6 +450,7 @@ def screen_transmission(p, url, report):
               const panel=PhotonPanel.read(canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height));
               return panel.found && panel.data===0 && panel.clock===0 && panel.quality===0;}'''
             assert page.evaluate(idle_panel), 'First-use idle panel is not recognizable'
+            signal_panel_accessibility(page)
             assert page.locator('#rate').input_value()=='2'
             expected=page.evaluate("() => PhotonSpatial.transmission('A',PhotonSpatial.config())")
             page.evaluate('''() => {
@@ -443,7 +463,9 @@ def screen_transmission(p, url, report):
             page.click('#start')
             assert page.locator('#tx-progress').inner_text()==''
             assert page.evaluate(idle_panel), 'Countdown panel is not recognizable'
+            signal_panel_accessibility(page)
             page.wait_for_function('() => sentFrames.length>0',timeout=4000)
+            signal_panel_accessibility(page)
             assert page.evaluate('() => counts')==['③','②','①','Start']
             countdown_ms=page.evaluate('() => sentFrames[0].time-countTimes[0]')
             assert 2950<=countdown_ms<=3500,countdown_ms
@@ -459,6 +481,7 @@ def screen_transmission(p, url, report):
             actual_holds=[(frames[i]['time']-frames[i-1]['time'])/1000 for i in range(1,len(frames))]
             assert min(actual_holds)>=.49 and max(actual_holds)<=.61,actual_holds
             assert page.locator('#start').is_enabled() and page.locator('#stop').is_disabled()
+            signal_panel_accessibility(page)
             assert not page.locator('#error').inner_text() and not errors,errors
             page.select_option('#contrast', 'high')
             page.evaluate('() => {sentFrames.length=0;}')
@@ -476,9 +499,11 @@ def screen_transmission(p, url, report):
             assert high_panel == {'found': True, 'data': 1, 'clock': 1}, high_panel
             page.click('#stop')
             assert page.evaluate(idle_panel), 'High contrast stop must restore the static panel'
+            signal_panel_accessibility(page)
             assert not errors, errors
             report.append({'sender':engine.name,'text':'A','symbols':len(frames),'rate':2,'timing':timing,
                 'elapsedSeconds':round(elapsed,3),'countdownSeconds':round(countdown_ms/1000,3),'allPixelsMatch':True,
+                'signalPanelAccessibility':True,
                 'highContrast':'33/237 pixels, confirmation/cancel, readable data and clock'})
             print('sender',engine.name,'PASS',round(elapsed,3),timing,flush=True)
         finally:
@@ -920,6 +945,12 @@ def reception_diagnostics(p, url, report):
         page = context.new_page()
         errors = errors_for(page)
         page.goto(url + '?lang=en')
+        signal_panel_accessibility(page, hover=True)
+        page.click('#language')
+        signal_panel_accessibility(page, hover=True)
+        page.click('#clear')
+        signal_panel_accessibility(page, hover=True)
+        page.click('#language')
         page.select_option('#role', 'receive')
         page.evaluate('''() => {window.packet = (bad,offset=0) => {
           const C=PhotonSpatial,tx=C.transmission('A',C.config({rate:8}));
@@ -991,6 +1022,7 @@ def reception_diagnostics(p, url, report):
         assert not errors, errors
         report.append({'diagnostics':engine.name,'badPacketThenResend':'A CRC pass; graph updated',
             'savedSamples':len(diagnostic['samples']),'replay':'A CRC pass','timeoutRestart':True,
+            'signalPanelHover':'no title/cursor; accessible label retained after language change and clear',
             'roi':'4 corners, move, new, clamp, click; Chromium also touch drag'})
         browser.close()
 
