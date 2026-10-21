@@ -1,0 +1,58 @@
+{
+  "kind": "deterministic synthetic samples; not physical camera measurements",
+  "text": "LIGHT123",
+  "fps": [
+    24,
+    30,
+    60
+  ],
+  "rate": [
+    2,
+    4,
+    8
+  ],
+  "clock": [
+    0.97,
+    1.025
+  ],
+  "offset": [
+    0.13,
+    0.37,
+    0.531
+  ],
+  "gain": 0.65,
+  "background": 0.08,
+  "jitterAmplitude": 0.023,
+  "smoothing": 0.3,
+  "dropEvery": 29,
+  "rows": [
+    {
+      "mode": "mono",
+      "levels": 2,
+      "valid": 42,
+      "total": 54,
+      "wrongValid": 0
+    },
+    {
+      "mode": "mono",
+      "levels": 4,
+      "valid": 36,
+      "total": 54,
+      "wrongValid": 0
+    },
+    {
+      "mode": "color",
+      "levels": 2,
+      "valid": 26,
+      "total": 54,
+      "wrongValid": 0
+    },
+    {
+      "mode": "color",
+      "levels": 4,
+      "valid": 9,
+      "total": 54,
+      "wrongValid": 0
+    }
+  ]
+}
