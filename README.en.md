@@ -309,6 +309,7 @@ photon-flicker-link/          # Project
 │       └── test.yml         # Node 22 CI
 ├── index.html               # Single-page interface and CSP
 ├── style.css                # Themes and responsive layout
+├── theme-init.js            # Theme before the first paint
 ├── codec-core.js            # Pure encoding, calibration and decoding
 ├── reliable-codec.js        # V2 paired signaling, correction and clock tracking
 ├── spatial-codec.js         # V3 separate clock and block decoding
@@ -347,6 +348,7 @@ photon-flicker-link/          # Project
     ├── io.test.js           # IO lifecycle and interruption
     ├── structure.test.js    # HTML, CSP, dictionaries and contrast
     ├── readme.test.js       # Values, metadata, images and structure
+    ├── theme-init.test.js   # Initial theme and load position
     └── browser.py           # Browser and virtual-camera checks
 ```
 

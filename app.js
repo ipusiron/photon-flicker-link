@@ -4,14 +4,13 @@
   const C = window.PhotonSpatial, M = window.PhotonMessages;
   const $ = id => document.getElementById(id);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  const dark = matchMedia('(prefers-color-scheme: dark)');
   const stored = key => { try { return localStorage.getItem('photon-flicker-link.' + key); } catch (_) { return null; } };
   const save = (key, value) => { try { localStorage.setItem('photon-flicker-link.' + key, value); } catch (_) { /* Optional. */ } };
   const requestedLanguage = new URLSearchParams(location.search).get('lang');
   let language = [requestedLanguage, stored('language')].find(v => v === 'ja' || v === 'en') ||
     (navigator.language.startsWith('ja') ? 'ja' : 'en');
-  let theme = stored('theme');
-  if (!['light', 'dark'].includes(theme)) theme = dark.matches ? 'dark' : 'light';
+  /* theme-init.js has already set data-theme in <head> from the saved choice or the OS setting; start-up reads it back. */
+  let theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
   let busy = false, generation = 0, decoder = null, result = null, sync = null, environment = null;
   let currentRole = 'send', expected = '', status = 'idle', error = '', live = '';
   let trace = [], marks = [], txFrame = null, lastDraw = -Infinity, selectedRegion = PhotonCamera.region({ x: 0, y: 0, w: 1, h: 1 });

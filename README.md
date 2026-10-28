@@ -308,6 +308,7 @@ photon-flicker-link/          # プロジェクト
 │       └── test.yml         # Node 22のCI
 ├── index.html               # 1枚の画面とCSP
 ├── style.css                # 明暗・レスポンシブ表示
+├── theme-init.js            # 描画前の明暗の決定
 ├── codec-core.js            # 符号化・較正・同期復調の純関数
 ├── reliable-codec.js        # v2の反転送信・誤り訂正・同期追従
 ├── spatial-codec.js         # v3の独立クロックとブロック復号
@@ -346,6 +347,7 @@ photon-flicker-link/          # プロジェクト
     ├── io.test.js           # 入出力の寿命と中断
     ├── structure.test.js    # HTML・CSP・日英・配色
     ├── readme.test.js       # 数値・メタデータ・画像・構成
+    ├── theme-init.test.js   # 最初の明暗と読み込み位置
     └── browser.py           # ブラウザーと仮想カメラの検証
 ```
 
