@@ -12,6 +12,7 @@ Day122の光通信教材です。通常スクリプトのUMD形式を維持し�
 - `screen-tx.js`：1回の有限送信、描画保持時間の検査、停止時の静止画面
 - `app.js`：役割、DOM、探索範囲、時系列グラフと診断
 - `messages.js`：日英の全表示文言と8節の座学
+- `theme-init.js`：最初の描画の前に`<html>`の`data-theme`を決める。`<head>`で`style.css`の直後にdeferなしで読む。保存値（`light`／`dark`）を優先し、なければOSの設定に従う。`app.js`は起動時に`data-theme`を読み、トグルで切り替えて保存する
 - `npm test`：Node.js 22以上の標準テスト。インストール不要
 - `python -X utf8 test/browser.py`：既存のPlaywrightとFFmpegによるHTTP/file検証
 - `--screenshots`：日英8枚を撮影。撮影後に目視確認

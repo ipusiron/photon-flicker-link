@@ -18,8 +18,9 @@ test('F: restrictive CSP, blob-only local media addition, no inline script/style
   assert.ok(!/unsafe-|frame-ancestors/.test(csp));
   assert.match(html, /name="referrer" content="no-referrer"/);
   assert.ok(!/\son\w+\s*=|\sstyle\s*=|<style\b|type="module"/.test(html));
-  assert.equal([...html.matchAll(/<script\b/g)].length, scripts.length);
+  assert.equal([...html.matchAll(/<script\b/g)].length, scripts.length + 1);
   assert.equal([...html.matchAll(/<script src="[^"]+" defer><\/script>/g)].length, scripts.length);
+  assert.ok(html.includes('<script src="theme-init.js"></script>'), 'theme-init.js runs before the first paint');
   assert.match(html, /<noscript>/);
   for (const script of scripts) assert.ok(html.includes(`src="${script}"`));
 });
@@ -39,7 +40,7 @@ test('F: bilingual keys, visible prose and lesson structure', () => {
   }
 });
 test('F: forbidden APIs/prose and only two persisted preferences', () => {
-  const source = scripts.map(read).join('\n');
+  const source = [...scripts, 'theme-init.js'].map(read).join('\n');
   for (const word of ['Worklet', 'WASM', 'fetch(', 'innerHTML', 'eval(', 'MediaRecorder', 'WebSocket']) {
     assert.ok(!source.includes(word), word);
   }
@@ -59,7 +60,7 @@ test('F: unique IDs, all literal app element references exist and role count is 
   assert.equal((roles.match(/<option/g) || []).length, 3);
 });
 test('F: readable source format and minimum module size', () => {
-  const files = [...scripts, 'style.css', ...fs.readdirSync(__dirname).filter(n => n.endsWith('.js')).map(n => 'test/' + n)];
+  const files = [...scripts, 'theme-init.js', 'style.css', ...fs.readdirSync(__dirname).filter(n => n.endsWith('.js')).map(n => 'test/' + n)];
   for (const file of files) read(file).split('\n').forEach((line, i) => assert.ok(line.length <= 160, `${file}:${i + 1}: ${line.length}`));
   html.split('\n').forEach((line, i) => assert.ok(line.length <= 250, `index.html:${i + 1}`));
   for (const file of scripts) assert.ok(read(file).split('\n').length > 50, file);
