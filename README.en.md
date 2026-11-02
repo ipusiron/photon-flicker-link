@@ -349,6 +349,7 @@ photon-flicker-link/          # Project
     ├── structure.test.js    # HTML, CSP, dictionaries and contrast
     ├── readme.test.js       # Values, metadata, images and structure
     ├── theme-init.test.js   # Initial theme and load position
+    ├── live-region.test.js  # Live-region write suppression and pacing
     └── browser.py           # Browser and virtual-camera checks
 ```
 
