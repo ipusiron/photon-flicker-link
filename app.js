@@ -27,20 +27,54 @@
   const settings = () => C.config({ mode: 'mono', rate: Number($('rate').value), contrast: $('contrast').value });
   function setBusy(value) {
     busy = value;
+    resetLivePacing();
     ['role', 'rate', 'contrast', 'text-input', 'video-input', 'expected', 'start'].forEach(id => { $(id).disabled = value; });
     $('stop').disabled = !value;
     $('start').disabled = value && !testingCamera;
     $('camera-test').disabled = value;
     $('camera-test-stop').disabled = !testingCamera;
   }
+  // Live regions: assigning identical text still replaces the text node and can be announced again.
+  function setLiveText(target, text) {
+    if (target.textContent === text) return false;
+    target.textContent = text;
+    return true;
+  }
+  // While busy, status regions change at most every 1.5 s and the latest text is flushed afterwards.
+  // The first text of a busy session (start) is written at once. Outside busy (stop, completion, error)
+  // the final text is also written at once and pending intermediate text is dropped.
+  const LIVE_GAP_MS = 1500, pacedLive = new Map();
+  function resetLivePacing() {
+    pacedLive.forEach(entry => { clearTimeout(entry.timer); entry.timer = null; entry.at = -Infinity; });
+  }
+  function announce(target, text, immediate) {
+    let entry = pacedLive.get(target);
+    if (!entry) pacedLive.set(target, entry = { at: -Infinity, timer: null, text });
+    entry.text = text;
+    clearTimeout(entry.timer); entry.timer = null;
+    const wait = immediate ? 0 : entry.at + LIVE_GAP_MS - performance.now();
+    if (wait <= 0 || target.textContent === text) {
+      const written = setLiveText(target, text);
+      if (written) entry.at = performance.now();
+      return written;
+    }
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (setLiveText(target, entry.text)) entry.at = performance.now();
+    }, wait);
+    return false;
+  }
+  // One span per character, so equal textContent means an identical painted result.
   function paintText(target, value) {
-    target.replaceChildren();
-    for (const character of value) {
+    if (target.textContent === value) return false;
+    // Replace all characters in one mutation so a partial string is never exposed.
+    target.replaceChildren(...Array.from(value, character => {
       const span = document.createElement('span');
       span.textContent = character;
       if (character === '?') span.className = 'uncertain';
-      target.append(span);
-    }
+      return span;
+    }));
+    return true;
   }
   function inputInfo() {
     try {
@@ -66,22 +100,23 @@
     $('receiver').hidden = $('role').value === 'send';
     $('camera-fields').hidden = $('role').value !== 'receive';
     if ($('role').value === 'receive') $('start').textContent = t('receiveStart');
-    $('camera-list-note').textContent = t(cameraListState, { count: cameras.length });
-    $('camera-check').textContent = t(cameraCheckState);
+    const settled = !busy;
+    announce($('camera-list-note'), t(cameraListState, { count: cameras.length }), settled);
+    announce($('camera-check'), t(cameraCheckState), settled);
     $('camera-details').textContent = cameraCheck ? t('cameraDetails', { name: cameraCheck.label || t('cameraDefault'),
       width: cameraCheck.width, height: cameraCheck.height, fps: cameraCheck.fps.toFixed(1) }) : '';
-    $('status').textContent = t(status);
-    $('error').textContent = error ? t(error) : '';
+    announce($('status'), t(status), settled);
+    setLiveText($('error'), error ? t(error) : '');
     $('graph-legend').textContent = t('monoLegend');
-    $('tx-countdown').textContent = countdownValue === null ? '' : countdownValue ? ['①', '②', '③'][countdownValue - 1] : t('start');
+    setLiveText($('tx-countdown'), countdownValue === null ? '' : countdownValue ? ['①', '②', '③'][countdownValue - 1] : t('start'));
     $('preview-note').textContent = t(camera.active ? testingCamera ? 'testPreviewNote' : 'activePreviewNote' :
       $('role').value === 'offline' ? 'offlinePreviewNote' : 'receivePreviewNote');
-    $('receive-status').textContent = t(status);
+    announce($('receive-status'), t(status), settled);
     renderReceiveState();
     $('receive-progress').textContent = receiveProgress ? t('receiveProgress', {
       count: receiveProgress.index + 1, total: receiveProgress.total ?? '?', retries }) :
       retries ? t('retryProgress', { retries, reason: t(retryReason) }) : '';
-    $('block-progress').textContent = blockProgress ? t('blockProgress', blockProgress) : '';
+    setLiveText($('block-progress'), blockProgress ? t('blockProgress', blockProgress) : '');
     if (quality) {
       $('signal-health').textContent = t('signalHealth', { quality: (quality.quality * 100).toFixed(0),
         data: quality.data.toFixed(3), clock: quality.clock.toFixed(3) });
@@ -161,7 +196,7 @@
     receiveProgress = null; retries = 0; retryReason = ''; blockProgress = null;
     capture = null;
     ['result-text', 'diagnostics', 'live', 'tx-progress', 'tx-remaining', 'sample-value', 'corrections', 'receive-progress', 'block-progress']
-      .forEach(id => { $(id).textContent = ''; });
+      .forEach(id => { setLiveText($(id), ''); });
     ['crc', 'frame-check', 'confidence', 'agreement', 'env-fps', 'env-resolution', 'env-clock', 'env-exposure', 'env-wb']
       .forEach(id => { $(id).textContent = '—'; });
     $('agreement-field').hidden = true;

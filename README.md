@@ -348,6 +348,7 @@ photon-flicker-link/          # プロジェクト
     ├── structure.test.js    # HTML・CSP・日英・配色
     ├── readme.test.js       # 数値・メタデータ・画像・構成
     ├── theme-init.test.js   # 最初の明暗と読み込み位置
+    ├── live-region.test.js  # 読み上げ領域の重複更新抑制
     └── browser.py           # ブラウザーと仮想カメラの検証
 ```
 
